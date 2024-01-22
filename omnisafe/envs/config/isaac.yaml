@@ -1,0 +1,35 @@
+control_hz: 10
+env_hz: 60
+use_viewer: 0
+use_camera: 0
+num_envs: 1
+num_obj_per_env: 1
+object_code: [sem-Car-da496ba5f90a476a1493b1a3f79fe4c6_006]
+env_spacing: 5
+object_rise: 0.1
+friction: 1
+init_timesteps: 11
+act_timesteps: 44
+rand_radius: 0.1
+robot_pc_points: 2048
+load_traj: 0
+asset_path: data
+assets_dir: data/meshdatav3_scaled
+data_root: data
+p: 727
+d: 15
+
+gpu: 0
+
+sim:
+  substeps: 2
+  num_client_threads: 0
+
+camera:
+  xyz: [0.56215204, 0.6174357 , 0.67805135]
+  eye: [0.58368003, -0.0045775, -0.1046594]
+
+# physics randomization param
+physics_randomization: False
+adr:
+  use_adr: False

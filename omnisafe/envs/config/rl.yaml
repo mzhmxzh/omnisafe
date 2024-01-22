@@ -1,0 +1,78 @@
+exp_name: temp
+model_path: null
+gpu: 0
+seed: 1812
+num_frames: 1
+use_loss_tpen: False
+specify_obj: null
+w_tpen: 0.001
+dilation_tpen: 0.002
+inner_iters: 8
+iters: 500000
+save_every: 1000
+test_every: 2500
+robot_pc_points: 4096
+object_pc_points: 256
+with_tactile: 1
+quantization_size: 0.01
+split_path: data/splits/bc_dataset.json
+gamma: 0.96
+lam: 0.95
+ppo_epochs: 1
+batch_size: 256
+desired_kl: 0.016 # null
+target_kl: null # 0.2
+strict_constraint: 0
+from_start: 0
+back_step_range: [0, 15]
+p: 727
+d: 15
+
+num_envs: 500
+num_obj_per_env: 1
+
+actor:
+  num_frames: 1
+  vision_backbone_type: single
+  vision_backbone_parameters: 
+    scene_pn_parameters:
+      point_feature_dim: 3
+      local_conv_hidden_layers_dim: [64, 256]
+      global_mlp_hidden_layers_dim: [256]
+      pc_feature_dim: 64
+    scene_encoder_path: experiments/backbone/v7/checkpoints/iter_200k.pt
+    #scene_encoder_path: experiments/pretrain_obj_emd_2/checkpoints/iter_110k.pt
+  freeze_vision_backbone: False
+  policy_type: gaussian
+  robot_mlp_parameters:
+    input_dim: 25
+    hidden_layers_dim: [64, 128]
+    output_dim: 64
+    act: tanh
+  policy_parameters:
+    normalize_output: 0
+    with_std: 1
+    init_std: 0.8
+    scale: 0.05
+    output_type: raw_delta
+    act_fn: tanh
+    strict_range: 0
+    diffusion:
+      diffusion_objective: pred_v
+  critic_parameters:
+    hidden_layers_dim: [128, 64, 16]
+    output_dim: 1
+    act: tanh
+  with_goal: 0
+  with_rot: 0
+
+learning_rate: 0.0003
+max_grad_norm: 0.5
+value_loss_weight: 2.0
+clip_param: 0.2
+
+trans_reward_weight: 10.0
+rot_reward_weight: 1.0
+qpos_reward_weight: 0.5
+
+reward_type: staged2
