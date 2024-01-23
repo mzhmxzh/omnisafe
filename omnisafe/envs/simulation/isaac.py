@@ -488,6 +488,7 @@ class Env():
                 result_dict['available'] = torch.logical_and(result_dict['available'], (self.worker_types == RolloutWorkerModes.ADR_ROLLOUT))
             result_dict['npd'] = self.npd 
             result_dict['boundary_sr'] = self.boundary_sr
+        # TODO: calculate cost
         return result_dict
 
     def substep(self, subactions):
