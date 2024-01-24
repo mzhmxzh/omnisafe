@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+from omnisafe.models.actor.pointnet_mlp_actor import PointnetMLPActor
 from omnisafe.models.actor.gaussian_learning_actor import GaussianLearningActor
 from omnisafe.models.actor.gaussian_sac_actor import GaussianSACActor
 from omnisafe.models.actor.mlp_actor import MLPActor
@@ -74,6 +75,8 @@ class ActorBuilder:
         Raises:
             NotImplementedError: If the actor type is not implemented.
         """
+        if actor_type == 'pointnet_mlp_actor':
+            return PointnetMLPActor()
         if actor_type == 'gaussian_learning':
             return GaussianLearningActor(
                 self._obs_space,
