@@ -2,7 +2,9 @@ import sys
 
 sys.path.append('/home/jialiangzhang/Workspace/omnisafe/omnisafe/envs/')
 
+from gymnasium import spaces
 from simulation.isaac import Env
+from typing import Any, ClassVar
 import numpy as np
 import torch
 from omnisafe.envs.core import CMDP, env_register
@@ -12,6 +14,8 @@ from utils.config import load_config, DotDict
 
 @env_register
 class SafetyDexgraspEnv(CMDP):
+    need_auto_reset_wrapper: bool = False
+    need_time_limit_wrapper: bool = False
     _support_envs = [
         'dexgrasp-v0',
     ]
@@ -38,6 +42,13 @@ class SafetyDexgraspEnv(CMDP):
         self._env = Env(self._config)
         self._env.reset()
         self._env.randomize_start()
+        
+        # set parameters
+        obs_dim = 409
+        act_dim = 22
+        self._observation_space = spaces.Box(low=-1, high=1, shape=(obs_dim,), dtype='float32')
+        self._action_space = spaces.Box(low=-1, high=1, shape=(act_dim,), dtype='float32')
+        self._metadata = dict()
     
     def step(
         self,
@@ -58,17 +69,17 @@ class SafetyDexgraspEnv(CMDP):
         # TODO: calculate cost
         cost = current_state['cost']
         
-        return net_input, current_state['reward'], cost, terminated, truncated, None
+        return net_input, current_state['reward'], cost, terminated, truncated, dict(success=self._env.record_success)
     
     def reset(
         self,
         seed,
-        options,
+        options=None,
     ):
         self._env.reset()
         current_state = self._env.get_state()
         net_input = self._obs_wrapper.query(current_state)
-        return net_input, None
+        return net_input, dict()
     
     def set_seed(self, seed):
         self.reset(seed=seed)
@@ -81,3 +92,9 @@ class SafetyDexgraspEnv(CMDP):
     
     def close(self):
         self._env.close()
+
+
+if __name__ == '__main__':
+    env = SafetyDexgraspEnv('dexgrasp-v0', 1, 'cpu')
+    env.reset(0, None)
+    env.close()

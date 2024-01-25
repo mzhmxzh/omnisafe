@@ -122,6 +122,11 @@ class OnPolicyAdapter(OnlineAdapter):
 
                     if done or time_out:
                         self._log_metrics(logger, idx)
+                        logger.store(
+                            {
+                                'Metrics/Succ': info['success'][idx].float(), 
+                            }
+                        )
                         self._reset_log(idx)
 
                         self._ep_ret[idx] = 0.0

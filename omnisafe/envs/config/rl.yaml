@@ -1,6 +1,6 @@
 exp_name: temp
 model_path: null
-gpu: 0
+gpu: 3
 seed: 1812
 num_frames: 1
 use_loss_tpen: False

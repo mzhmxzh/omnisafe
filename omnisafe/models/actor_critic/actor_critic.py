@@ -27,6 +27,7 @@ from omnisafe.models.critic.critic_builder import CriticBuilder
 from omnisafe.typing import OmnisafeSpace
 from omnisafe.utils.config import ModelConfig
 from omnisafe.utils.schedule import PiecewiseSchedule, Schedule
+from gymnasium import spaces
 
 
 class ActorCritic(nn.Module):
@@ -77,7 +78,7 @@ class ActorCritic(nn.Module):
             actor_type=model_cfgs.actor_type,
         )
         self.reward_critic: Critic = CriticBuilder(
-            obs_space=obs_space,
+            obs_space=spaces.Box(low=-1, high=1, shape=(128,), dtype='float32'),
             act_space=act_space,
             hidden_sizes=model_cfgs.critic.hidden_sizes,
             activation=model_cfgs.critic.activation,

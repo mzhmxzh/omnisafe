@@ -237,7 +237,7 @@ class ObsNormalize(Wrapper):
                 info['final_observation'][final_obs_slice],
             )
         info['original_obs'] = obs
-        obs = self._obs_normalizer.normalize(obs)
+        # obs = self._obs_normalizer.normalize(obs)
         return obs, reward, cost, terminated, truncated, info
 
     def reset(
@@ -256,8 +256,8 @@ class ObsNormalize(Wrapper):
             info: Some information logged by the environment.
         """
         obs, info = super().reset(seed=seed, options=options)
-        info['original_obs'] = obs
-        obs = self._obs_normalizer.normalize(obs)
+        # info['original_obs'] = obs
+        # obs = self._obs_normalizer.normalize(obs)
         return obs, info
 
     def save(self) -> dict[str, torch.nn.Module]:
@@ -643,9 +643,9 @@ class Unsqueeze(Wrapper):
             info: Some information logged by the environment.
         """
         obs, info = super().reset(seed=seed, options=options)
-        obs = obs.unsqueeze(0)
-        for k, v in info.items():
-            if isinstance(v, torch.Tensor):
-                info[k] = v.unsqueeze(0)
+        # obs = obs.unsqueeze(0)
+        # for k, v in info.items():
+        #     if isinstance(v, torch.Tensor):
+        #         info[k] = v.unsqueeze(0)
 
         return obs, info

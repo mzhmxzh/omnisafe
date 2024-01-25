@@ -56,7 +56,7 @@ class ObsWrapper():
         else:
             visual_observation = torch.zeros(len(robot_state), 0, dtype=torch.float, device=robot_state.device)
         result = dict(robot_state_stacked=robot_state[:, None], visual_observation=visual_observation)
-        result.update(obs_dict)
+        result = torch.cat([robot_state, visual_observation.reshape(len(robot_state), -1)], dim=-1)
         return result
 
     def update(self, obs_dict, action):
