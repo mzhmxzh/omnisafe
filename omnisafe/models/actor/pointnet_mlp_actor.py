@@ -85,6 +85,7 @@ class PointnetMLPActor(GaussianActor):
         robot_state_stacked = obs[:, :25].reshape(len(obs), 1, 25)
         visual_observation = obs[:, 25:].reshape(len(obs), -1, 3)
         obs_feature, _ = self.feature_extractor(robot_state_stacked, visual_observation)
+        self._robot_state = obs[:, :22].clone()
         self._obs_feature = obs_feature
         return obs_feature
 
@@ -127,10 +128,12 @@ class PointnetMLPActor(GaussianActor):
         self._after_inference = True
         if deterministic:
             return self._current_dist.mean
-        action = self._current_dist.rsample()
+        raw_action = self._current_dist.rsample()
+        action = self.policy.raw_action_to_action(self._robot_state, raw_action)
         if squeeze:
             action = action.squeeze(0)
         return action
+        return raw_action
 
     def forward(self, obs: torch.Tensor) -> Distribution:
         """Forward method.
@@ -159,6 +162,11 @@ class PointnetMLPActor(GaussianActor):
         """
         assert self._after_inference, 'log_prob() should be called after predict() or forward()'
         self._after_inference = False
+        if len(act.shape) == 1:
+            raw_action = self.policy.action_to_raw_action(self._robot_state, act.unsqueeze(0)).squeeze(0)
+        else:
+            raw_action = self.policy.action_to_raw_action(self._robot_state, act)
+        return self._current_dist.log_prob(raw_action).sum(axis=-1)
         return self._current_dist.log_prob(act).sum(axis=-1)
 
     @property
