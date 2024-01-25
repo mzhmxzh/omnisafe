@@ -241,6 +241,8 @@ class PolicyGradient(BaseAlgo):
         """
         start_time = time.time()
         self._logger.log('INFO: Start training')
+        
+        self._step_size = self._cfgs.model_cfgs.actor.lr
 
         for epoch in range(self._cfgs.train_cfgs.epochs):
             epoch_time = time.time()
@@ -271,9 +273,7 @@ class PolicyGradient(BaseAlgo):
                     'Time/Total': (time.time() - start_time),
                     'Time/Epoch': (time.time() - epoch_time),
                     'Train/Epoch': epoch,
-                    'Train/LR': 0.0
-                    if self._cfgs.model_cfgs.actor.lr is None
-                    else self._actor_critic.actor_scheduler.get_last_lr()[0],
+                    'Train/LR': self._step_size,
                 },
             )
 
@@ -360,12 +360,35 @@ class PolicyGradient(BaseAlgo):
                 adv_r,
                 adv_c,
             ) in dataloader:
-                self._update_actor(obs, act, logp, adv_r, adv_c)
-                obs_feature = self._actor_critic.actor.get_obs_feature(obs)
-                self._update_reward_critic(obs_feature, target_value_r)
+                for param_group in self._actor_critic.actor_optimizer.param_groups:
+                    param_group['lr'] = self._step_size
+                for param_group in self._actor_critic.reward_critic_optimizer.param_groups:
+                    param_group['lr'] = self._step_size
                 if self._cfgs.algo_cfgs.use_cost:
-                    obs_feature = self._actor_critic.actor.get_obs_feature(obs)
-                    self._update_cost_critic(obs_feature, target_value_c)
+                    for param_group in self._actor_critic.cost_critic_optimizer.param_groups:
+                        param_group['lr'] = self._step_size
+                # update params
+                self._update_actor(obs, act, logp, adv_r, adv_c)
+                critic_obs_feature = self._actor_critic.actor.get_obs_feature(obs)
+                self._update_reward_critic(critic_obs_feature, target_value_r)
+                if self._cfgs.algo_cfgs.use_cost:
+                    cost_obs_feature = self._actor_critic.actor.get_obs_feature(obs)
+                    self._update_cost_critic(cost_obs_feature, target_value_c)
+                # update lr
+                new_distribution = self._actor_critic.actor(original_obs)
+                kl = (
+                    torch.distributions.kl.kl_divergence(old_distribution, new_distribution)
+                    .sum(-1, keepdim=True)
+                    .mean()
+                )
+                kl = distributed.dist_avg(kl)
+                if kl.item() > self._cfgs.algo_cfgs.target_kl * 2.0:
+                    self._step_size = max(1e-5, self._step_size / 1.5)
+                elif kl.item() < self._cfgs.algo_cfgs.target_kl / 2.0 and kl.item() > 0.0:
+                    self._step_size = min(1e-2, self._step_size * 1.5)
+                # early stop
+                if kl.item() > self._cfgs.algo_cfgs.target_kl * 2.0:
+                    break
 
             new_distribution = self._actor_critic.actor(original_obs)
 
@@ -379,7 +402,7 @@ class PolicyGradient(BaseAlgo):
             final_kl = kl.item()
             update_counts += 1
 
-            if self._cfgs.algo_cfgs.kl_early_stop and kl.item() > self._cfgs.algo_cfgs.target_kl:
+            if self._cfgs.algo_cfgs.kl_early_stop and kl.item() > self._cfgs.algo_cfgs.target_kl * 2.0:
                 self._logger.log(f'Early stopping at iter {i + 1} due to reaching max kl')
                 break
 
