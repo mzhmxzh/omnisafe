@@ -24,6 +24,7 @@ from omnisafe.models.base import Critic
 from omnisafe.models.critic.critic_builder import CriticBuilder
 from omnisafe.typing import OmnisafeSpace
 from omnisafe.utils.config import ModelConfig
+from gymnasium import spaces
 
 
 class ConstraintActorCritic(ActorCritic):
@@ -64,7 +65,7 @@ class ConstraintActorCritic(ActorCritic):
         """Initialize an instance of :class:`ConstraintActorCritic`."""
         super().__init__(obs_space, act_space, model_cfgs, epochs)
         self.cost_critic: Critic = CriticBuilder(
-            obs_space=obs_space,
+            obs_space=spaces.Box(low=-1, high=1, shape=(128,), dtype='float32'),
             act_space=act_space,
             hidden_sizes=model_cfgs.critic.hidden_sizes,
             activation=model_cfgs.critic.activation,
@@ -100,11 +101,15 @@ class ConstraintActorCritic(ActorCritic):
             log_prob: The log probability of the action.
         """
         with torch.no_grad():
-            value_r = self.reward_critic(obs)
-            value_c = self.cost_critic(obs)
-
             action = self.actor.predict(obs, deterministic=deterministic)
             log_prob = self.actor.log_prob(action)
+            
+            if len(obs.shape) == 1:
+                value_r = self.reward_critic(self.actor._obs_feature.squeeze(0))
+                value_c = self.cost_critic(self.actor._obs_feature.squeeze(0))
+            else:
+                value_r = self.reward_critic(self.actor._obs_feature)
+                value_c = self.cost_critic(self.actor._obs_feature)
 
         return action, value_r[0], value_c[0], log_prob
 

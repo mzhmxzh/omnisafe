@@ -373,13 +373,15 @@ class Env():
                 self.robot_state_tensor_initial[i, :, 0] = torch.from_numpy(qpos).float().to(self.device)
         else:
             self.robot_state_tensor_initial[indices] = self.robot_state_tensor_initial_save[indices]
-        self.robot_state_tensor_initial[indices,:,1] = 0
+        for index in indices:
+            self.robot_state_tensor_initial[index.item(),:,1] = 0
         self.robot_indices_flat = self.robot_indices[indices].to(torch.int32).reshape(-1)
         self.gym.set_dof_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(self.robot_state_tensor_initial),
                                               gymtorch.unwrap_tensor(self.robot_indices_flat), len(self.robot_indices_flat))
         self.target[indices] = self.robot_state_tensor_initial[indices,:,0].clone()
         self.progress_buf[indices] = -self.config.init_timesteps
-        self.goal[indices] = 0
+        for index in indices:
+            self.goal[index.item()] = 0
         if self.config.actor.with_rot:
             self.goal_rot[indices] = pttf.random_rotations(len(indices), device=self.device)
     
@@ -390,6 +392,7 @@ class Env():
         return self.get_state()
 
     def safety_wrapper(self, actions):
+        return actions, torch.zeros((len(actions)), device=self.device)
         return self.wrapper.direct(actions)
     
     def step(self, actions=None, goal=None, step_cnt=-1, with_delay=False):
@@ -489,6 +492,7 @@ class Env():
             result_dict['npd'] = self.npd 
             result_dict['boundary_sr'] = self.boundary_sr
         # TODO: calculate cost
+        result_dict['cost'] = torch.zeros_like(result_dict['reward'])
         return result_dict
 
     def substep(self, subactions):

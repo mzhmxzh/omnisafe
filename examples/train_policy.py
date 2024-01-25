@@ -16,6 +16,8 @@
 
 import argparse
 
+from isaacgym import gymapi, gymtorch
+
 import omnisafe
 from omnisafe.utils.tools import custom_cfgs_to_dict, update_dict
 
@@ -54,14 +56,14 @@ if __name__ == '__main__':
     parser.add_argument(
         '--device',
         type=str,
-        default='cpu',
+        default='cuda:3',
         metavar='DEVICES',
         help='device to use for training',
     )
     parser.add_argument(
         '--vector-env-nums',
         type=int,
-        default=1,
+        default=100,
         metavar='VECTOR-ENV',
         help='number of vector envs to use for training',
     )

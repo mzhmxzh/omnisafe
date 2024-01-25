@@ -2,7 +2,7 @@ control_hz: 10
 env_hz: 60
 use_viewer: 0
 use_camera: 0
-num_envs: 1
+num_envs: 100
 num_obj_per_env: 1
 object_code: [sem-Car-da496ba5f90a476a1493b1a3f79fe4c6_006]
 env_spacing: 5
@@ -19,7 +19,7 @@ data_root: data
 p: 727
 d: 15
 
-gpu: 0
+gpu: 3
 
 sim:
   substeps: 2

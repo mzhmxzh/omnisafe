@@ -56,7 +56,7 @@ class PointnetMLPActor(GaussianActor):
         self._config = load_config('config/isaac.yaml', DotDict())
         self._config = load_config('config/rl.yaml', self._config)
         self._config = self._config.actor
-        obs_dim = self._config.robot_mlp_parameters.output_dim + self._config.vision_backbone_parameters.scene_pn_parameters.pc_feature_dim
+        obs_dim = 409
         act_dim = 22
         hidden_sizes = [1024, 1024, 512, 512]
         activation = 'tanh'
@@ -79,6 +79,13 @@ class PointnetMLPActor(GaussianActor):
             weight_initialization_mode=weight_initialization_mode,
         )
         self.log_std: nn.Parameter = nn.Parameter(torch.zeros(self._act_dim), requires_grad=True)
+    
+    def get_obs_feature(self, obs):
+        robot_state_stacked = obs[:, :25].reshape(len(obs), 1, 25)
+        visual_observation = obs[:, 25:].reshape(len(obs), -1, 3)
+        obs_feature, _ = self.feature_extractor(robot_state_stacked, visual_observation)
+        self._obs_feature = obs_feature
+        return obs_feature
 
     def _distribution(self, obs: torch.Tensor):
         """Get the distribution of the actor.
@@ -93,7 +100,7 @@ class PointnetMLPActor(GaussianActor):
         Returns:
             The normal distribution of the mean and standard deviation from the actor.
         """
-        obs_feature, _ = self.feature_extractor(obs['robot_state_stacked'], obs['visual_observation'])
+        obs_feature = self.get_obs_feature(obs)
         return self.policy(obs_feature)
 
     def predict(self, obs: torch.Tensor, deterministic: bool = False) -> torch.Tensor:
@@ -111,11 +118,18 @@ class PointnetMLPActor(GaussianActor):
         Returns:
             The mean of the distribution if deterministic is True, otherwise the sampled action.
         """
+        squeeze = False
+        if len(obs.shape) == 1:
+            squeeze = True
+            obs = obs.unsqueeze(0)
         self._current_dist = self._distribution(obs)
         self._after_inference = True
         if deterministic:
             return self._current_dist.mean
-        return self._current_dist.rsample()
+        action = self._current_dist.rsample()
+        if squeeze:
+            action = action.squeeze(0)
+        return action
 
     def forward(self, obs: torch.Tensor) -> Distribution:
         """Forward method.

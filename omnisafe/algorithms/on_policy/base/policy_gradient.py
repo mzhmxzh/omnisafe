@@ -32,6 +32,7 @@ from omnisafe.common.buffer import VectorOnPolicyBuffer
 from omnisafe.common.logger import Logger
 from omnisafe.models.actor_critic.constraint_actor_critic import ConstraintActorCritic
 from omnisafe.utils import distributed
+from utils.config import load_config, DotDict
 
 
 @registry.register
@@ -67,14 +68,15 @@ class PolicyGradient(BaseAlgo):
             self._seed,
             self._cfgs,
         )
-        assert (self._cfgs.algo_cfgs.steps_per_epoch) % (
-            distributed.world_size() * self._cfgs.train_cfgs.vector_env_nums
-        ) == 0, 'The number of steps per epoch is not divisible by the number of environments.'
-        self._steps_per_epoch: int = (
-            self._cfgs.algo_cfgs.steps_per_epoch
-            // distributed.world_size()
-            // self._cfgs.train_cfgs.vector_env_nums
-        )
+        # assert (self._cfgs.algo_cfgs.steps_per_epoch) % (
+        #     distributed.world_size() * self._cfgs.train_cfgs.vector_env_nums
+        # ) == 0, 'The number of steps per epoch is not divisible by the number of environments.'
+        # self._steps_per_epoch: int = (
+        #     self._cfgs.algo_cfgs.steps_per_epoch
+        #     // distributed.world_size()
+        #     // self._cfgs.train_cfgs.vector_env_nums
+        # )
+        self._steps_per_epoch = self._cfgs.algo_cfgs.steps_per_epoch
 
     def _init_model(self) -> None:
         """Initialize the model.
@@ -191,6 +193,7 @@ class PolicyGradient(BaseAlgo):
         self._logger.register_key('Metrics/EpRet', window_length=50)
         self._logger.register_key('Metrics/EpCost', window_length=50)
         self._logger.register_key('Metrics/EpLen', window_length=50)
+        self._logger.register_key('Metrics/Succ', window_length=50)
 
         self._logger.register_key('Train/Epoch')
         self._logger.register_key('Train/Entropy')
@@ -198,7 +201,7 @@ class PolicyGradient(BaseAlgo):
         self._logger.register_key('Train/StopIter')
         self._logger.register_key('Train/PolicyRatio', min_and_max=True)
         self._logger.register_key('Train/LR')
-        if self._cfgs.model_cfgs.actor_type == 'gaussian_learning':
+        if self._cfgs.model_cfgs.actor_type in ['gaussian_learning', 'pointnet_mlp_actor']:
             self._logger.register_key('Train/PolicyStd')
 
         self._logger.register_key('TotalEnvSteps')
@@ -357,10 +360,12 @@ class PolicyGradient(BaseAlgo):
                 adv_r,
                 adv_c,
             ) in dataloader:
-                self._update_reward_critic(obs, target_value_r)
-                if self._cfgs.algo_cfgs.use_cost:
-                    self._update_cost_critic(obs, target_value_c)
                 self._update_actor(obs, act, logp, adv_r, adv_c)
+                obs_feature = self._actor_critic.actor.get_obs_feature(obs)
+                self._update_reward_critic(obs_feature, target_value_r)
+                if self._cfgs.algo_cfgs.use_cost:
+                    obs_feature = self._actor_critic.actor.get_obs_feature(obs)
+                    self._update_cost_critic(obs_feature, target_value_c)
 
             new_distribution = self._actor_critic.actor(original_obs)
 
