@@ -205,27 +205,6 @@ class GaussianPolicy(Policy):
         std = torch.exp(self.log_std)
         return Normal(mean, std)
 
-    def predict(self, obs: torch.Tensor, deterministic: bool = False) -> torch.Tensor:
-        """Predict the action given observation.
-
-        The predicted action depends on the ``deterministic`` flag.
-
-        - If ``deterministic`` is ``True``, the predicted action is the mean of the distribution.
-        - If ``deterministic`` is ``False``, the predicted action is sampled from the distribution.
-
-        Args:
-            obs (torch.Tensor): Observation from environments.
-            deterministic (bool, optional): Whether to use deterministic policy. Defaults to False.
-
-        Returns:
-            The mean of the distribution if deterministic is True, otherwise the sampled action.
-        """
-        self._current_dist = self._distribution(obs)
-        self._after_inference = True
-        if deterministic:
-            return self._current_dist.mean
-        return self._current_dist.rsample()
-
     def forward(self, obs: torch.Tensor) -> Distribution:
         """Forward method.
 
@@ -238,30 +217,3 @@ class GaussianPolicy(Policy):
         self._current_dist = self._distribution(obs)
         self._after_inference = True
         return self._current_dist
-
-    def log_prob(self, act: torch.Tensor) -> torch.Tensor:
-        """Compute the log probability of the action given the current distribution.
-
-        .. warning::
-            You must call :meth:`forward` or :meth:`predict` before calling this method.
-
-        Args:
-            act (torch.Tensor): Action from :meth:`predict` or :meth:`forward` .
-
-        Returns:
-            Log probability of the action.
-        """
-        assert self._after_inference, 'log_prob() should be called after predict() or forward()'
-        self._after_inference = False
-        return self._current_dist.log_prob(act).sum(axis=-1)
-
-    @property
-    def std(self) -> float:
-        """Standard deviation of the distribution."""
-        return torch.exp(self.log_std).mean().item()
-
-    @std.setter
-    def std(self, std: float) -> None:
-        device = self.log_std.device
-        self.log_std.data.fill_(torch.log(torch.tensor(std, device=device)))
-
