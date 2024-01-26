@@ -396,8 +396,8 @@ class PolicyGradient(BaseAlgo):
                 elif kl.item() < self._cfgs.algo_cfgs.target_kl / 2.0 and kl.item() > 0.0:
                     self._step_size = min(1e-2, self._step_size * 1.5)
                 # early stop
-                if kl.item() > self._cfgs.algo_cfgs.target_kl * 2.0:
-                    break
+                # if kl.item() > self._cfgs.algo_cfgs.target_kl * 2.0:
+                #     break
 
             new_distribution = self._actor_critic.actor(original_obs)
 
