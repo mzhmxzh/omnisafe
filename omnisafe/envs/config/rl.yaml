@@ -40,8 +40,8 @@ actor:
       local_conv_hidden_layers_dim: [64, 256]
       global_mlp_hidden_layers_dim: [256]
       pc_feature_dim: 64
-    scene_encoder_path: experiments/backbone/v7/checkpoints/iter_200k.pt
-    #scene_encoder_path: experiments/pretrain_obj_emd_2/checkpoints/iter_110k.pt
+    #scene_encoder_path: experiments/backbone/v7/checkpoints/iter_200k.pt
+    scene_encoder_path: /mnt/disk0/danshili/Workspace/RealCheapPolicy/experiments/1001_pretrain_mini/checkpoints/iter_100k.pt
   freeze_vision_backbone: False
   policy_type: gaussian
   robot_mlp_parameters:

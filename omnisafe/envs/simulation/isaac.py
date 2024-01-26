@@ -34,6 +34,12 @@ import time
 import ikpy.chain
 import gc
 
+# seed = 0
+# random.seed(seed)
+# np.random.seed(seed)
+# torch.manual_seed(seed)
+# torch.cuda.manual_seed(seed)
+
 translation_names = ['WRJTx', 'WRJTy', 'WRJTz']
 rot_names = ['WRJRx', 'WRJRy', 'WRJRz']
 joint_names = [
@@ -344,6 +350,8 @@ class Env():
         self.thr_z = self.config.get("thr_z", 10.0)
         self.thr_x = self.config.get("thr_x", 10.0)
         self.thr_obj_force = self.config.get("thr_obj_force", 10.0)
+
+        self.cost = torch.zeros((self.num_envs),device=self.device)
         
         # self.gym = bind_visualizer_to_gym(self.gym, self.sim)
         # set_gpu_pipeline(True)
@@ -461,7 +469,7 @@ class Env():
             self.step(coordinator_prob=0)
         return self.get_state(coordinator_prob=0)
 
-    def safety_wrapper(self, actions, lift_idx, execute=True):
+    def safety_wrapper(self, actions, execute=True):
         return self.wrapper.direct(actions, execute)
     
     def step(self, actions=None, goal=None, step_cnt=-1, with_delay=False, mask_RL=None, coordinator_prob=None, non_RL_idx=None):
@@ -556,6 +564,7 @@ class Env():
         if self.config.physics_randomization:
             rerandomize_physics_gravity(self, step_cnt)
         self.refresh()
+        self.cost = self.cal_safety_cost(actions) if actions is not None else torch.zeros((self.num_envs),device=self.device)
         return state
     
     def get_state(self,coordinator_prob=None, non_RL_idx=None):
@@ -597,7 +606,7 @@ class Env():
             result_dict['adr_ranges'] = self.adr_ranges
 
         # TODO: implement cost
-        result_dict['cost'] = self.cal_safety_cost()
+        result_dict['cost'] = self.cost
         return result_dict
 
     def substep(self, subactions):
@@ -790,7 +799,7 @@ class Env():
         self.rollback_buf = (self.rollback_buf > 1)
         # print("c5")
 
-    def cal_safety_cost(self):
+    def cal_safety_cost(self, actions):
         # case1: table_penetration
         cost_tpen = torch.zeros((self.num_envs), device=self.device).bool()
         cost_tpen[self.progress_buf >= 0] = self.safety_wrapper(actions[self.progress_buf >= 0].clone(),execute=False)
@@ -809,4 +818,4 @@ class Env():
 
         cost = torch.logical_and(cost_tpen, cost_object)
         cost = torch.logical_and(cost, cost_finger)
-        return cost
+        return cost.float()

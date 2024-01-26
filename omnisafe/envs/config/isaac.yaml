@@ -25,6 +25,9 @@ sim:
   substeps: 2
   num_client_threads: 0
 
+force_scale: 0.0
+random_force_prob: 1.0
+
 camera:
   xyz: [0.56215204, 0.6174357 , 0.67805135]
   eye: [0.58368003, -0.0045775, -0.1046594]

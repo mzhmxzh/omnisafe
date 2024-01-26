@@ -145,6 +145,7 @@ def seed_all(seed: int) -> None:
     Args:
         seed (int): The random seed.
     """
+    return
     os.environ['PYTHONHASHSEED'] = str(seed)
 
     random.seed(seed)
@@ -154,7 +155,7 @@ def seed_all(seed: int) -> None:
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     try:
-        torch.use_deterministic_algorithms(True)
+        # torch.use_deterministic_algorithms(True)
         torch.backends.cudnn.enabled = False
         torch.backends.cudnn.benchmark = False
         if cuda_version is not None and float(cuda_version) >= 10.2:
