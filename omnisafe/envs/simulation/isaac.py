@@ -351,7 +351,7 @@ class Env():
         self.thr_x = self.config.get("thr_x", 10.0)
         self.thr_obj_force = self.config.get("thr_obj_force", 10.0)
 
-        self.cost = torch.zeros((self.num_envs),device=self.device)
+        self.cost = torch.zeros((self.num_envs),device=self.device) * 5
         
         # self.gym = bind_visualizer_to_gym(self.gym, self.sim)
         # set_gpu_pipeline(True)
@@ -524,10 +524,10 @@ class Env():
             sub_z_sensor_max = self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.global_forces_idx, 2].sum(dim=1).max(dim=0)[0].clone()
             z_sensor_min = torch.where(sub_z_sensor_min < z_sensor_min, sub_z_sensor_min, z_sensor_min)
             z_sensor_max = torch.where(sub_z_sensor_max > z_sensor_max, sub_z_sensor_max, z_sensor_max)
-        # print(self.global_z_sensor_read.mean())
-        # print("force sensor on hand")
-        # print(z_sensor_min)
-        # print(z_sensor_max)
+        print("force sensor on hand")
+        print(self.global_z_sensor_read.mean())
+        print(z_sensor_min)
+        print(z_sensor_max)
             
         # post-pseudo wrapper: check obj/finger penetration
         # if actions is not None:
@@ -564,7 +564,7 @@ class Env():
         if self.config.physics_randomization:
             rerandomize_physics_gravity(self, step_cnt)
         self.refresh()
-        self.cost = self.cal_safety_cost(actions) if actions is not None else torch.zeros((self.num_envs),device=self.device)
+        self.cost = self.cal_safety_cost(actions)
         return state
     
     def get_state(self,coordinator_prob=None, non_RL_idx=None):
@@ -800,22 +800,32 @@ class Env():
         # print("c5")
 
     def cal_safety_cost(self, actions):
+        if actions is not None:
         # case1: table_penetration
-        cost_tpen = torch.zeros((self.num_envs), device=self.device).bool()
-        cost_tpen[self.progress_buf >= 0] = self.safety_wrapper(actions[self.progress_buf >= 0].clone(),execute=False)
+            cost_tpen = torch.zeros((self.num_envs), device=self.device).bool()
+            cost_tpen[self.progress_buf >= 0] = self.safety_wrapper(actions[self.progress_buf >= 0].clone(),execute=False)
 
-        # case2: downward contact force
-        cost_object = torch.zeros((self.num_envs), device=self.device).bool()
-        cost_tpen[self.progress_buf >= 0] = (self.global_z_sensor_read > self.thr_obj_force)[self.progress_buf >= 0]
+            # case2: downward contact force
+            cost_object = torch.zeros((self.num_envs), device=self.device).bool()
+            cost_object[self.progress_buf >= 0] = (self.global_z_sensor_read > self.thr_obj_force)[self.progress_buf >= 0]
 
-        # case3: finger contact
-        cost_finger = torch.zeros((self.num_envs), device=self.device).bool()
-        fingertip_indices = [4,8,12,16]
-        fforce_fingertip = self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.fforces_idx, :3][:,fingertip_indices,:]
-        fforce_max_env = fforce_fingertip.max(dim=1)[0]
-        unsafe_mask = torch.logical_or(fforce_max_env[:,0] > self.thr_x, fforce_max_env[:,2] > self.thr_z)
-        cost_finger[self.progress_buf >= 0] = unsafe_mask[self.progress_buf >= 0]
+            # case3: finger contact
+            cost_finger = torch.zeros((self.num_envs), device=self.device).bool()
+            fingertip_indices = [4,8,12,16]
+            fforce_fingertip = self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.fforces_idx, :3][:,fingertip_indices,:]
+            fforce_max_env = fforce_fingertip.max(dim=1)[0]
+            unsafe_mask = torch.logical_or(fforce_max_env[:,0] > self.thr_x, fforce_max_env[:,2] > self.thr_z)
+            cost_finger[self.progress_buf >= 0] = unsafe_mask[self.progress_buf >= 0]
 
-        cost = torch.logical_and(cost_tpen, cost_object)
-        cost = torch.logical_and(cost, cost_finger)
-        return cost.float()
+            cost = torch.logical_or(cost_tpen, cost_object)
+            cost = torch.logical_or(cost, cost_finger)
+            assert cost_tpen.sum() == 0, "tpen"
+            assert cost_object.sum() == 0, "object"
+            assert cost_finger.sum() == 0, "finger"
+            # print("******************")
+            # print(self.global_z_sensor_read.max())
+            # print(fforce_max_env.max(dim=0)[0])
+            return cost.float()
+
+        else:
+            return torch.zeros((self.num_envs),device=self.device)

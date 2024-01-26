@@ -28,7 +28,7 @@ back_step_range: [0, 15]
 p: 727
 d: 15
 
-num_envs: 500
+num_envs: 100
 num_obj_per_env: 1
 
 actor:
