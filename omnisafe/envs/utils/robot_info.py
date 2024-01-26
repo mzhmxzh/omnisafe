@@ -1,12 +1,12 @@
 import torch
 import numpy as np
 
-ROBOT_BASE_HEIGHT = 0.01 # TODO:
+ROBOT_BASE_HEIGHT = 0.004 # TODO:
 TABLE_HEIGHT = 0.6
 
 HOME_POSE = torch.tensor([np.pi*x/180 for x in [0,-100,120,-15,90,90]] + [0] * 16) 
 OLD_HOME_POSE = torch.tensor([np.pi*x/180 for x in [0,-60,75,75,90,0]] + [0] * 4 + [0.5] + [0] * 11) # used for ik
-OBJ_INIT_CENTER = torch.tensor([0.6, 0.05])
+OBJ_INIT_CENTER = torch.tensor([0.6, 0.2])
 
 VISIBLE_RIGID_BODY = ['wrist_1_link', 'wrist_2_link', 'wrist_3_link', 'hand_base_link', 'mcp_joint', 'pip', 'dip', 'fingertip', 'pip_4', 'thumb_pip', 'thumb_dip', 'thumb_fingertip', 'mcp_joint_2', 'pip_2', 'dip_2', 'fingertip_2', 'mcp_joint_3', 'pip_3', 'dip_3', 'fingertip_3']
 ROBOT_LINKS = ['base_link', 'shoulder_link', 'upper_arm_link', 'forearm_link'] + VISIBLE_RIGID_BODY

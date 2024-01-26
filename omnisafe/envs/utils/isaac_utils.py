@@ -66,6 +66,15 @@ def points_in_contact(obj_points, pos, rot, size, thres):
     min_dis = torch.min(dis, dim=-1)[0]
     return (min_dis < thres).float()
 
+def points_contact_dist(obj_points, pos, rot, size, thres):
+    obj_points = torch.einsum('nab,nka->nkb', rot, obj_points - pos[:, None])
+    near_points = obj_points.clone()
+    near_points = torch.where(near_points > size[None, None, :]/2, size[None, None, :]/2, near_points)
+    near_points = torch.where(near_points < -size[None, None, :]/2, -size[None, None, :]/2, near_points)
+    dis = torch.norm(obj_points - near_points, dim=-1)
+    min_dis = torch.min(dis, dim=-1)[0]
+    return min_dis.float()
+
 def get_sim_params(config):
     sim_params = gymapi.SimParams()
     sim_params.dt = 1./config.env_hz
@@ -113,7 +122,7 @@ def get_robot_asset_options():
     robot_asset_options.linear_damping = 1.0
     robot_asset_options.max_linear_velocity = 1.0
     robot_asset_options.max_angular_velocity = 2 * np.pi
-    robot_asset_options.enable_gyroscopic_forces = True
+    # robot_asset_options.enable_gyroscopic_forces = True
     robot_asset_options.use_physx_armature = True
     robot_asset_options.default_dof_drive_mode = gymapi.DOF_MODE_NONE
     return robot_asset_options
@@ -131,7 +140,7 @@ def get_table_asset_options():
     table_options.angular_damping = 0.0  # default = 0.5
     table_options.max_angular_velocity = 64.0  # default = 64.0
     table_options.disable_gravity = False
-    table_options.enable_gyroscopic_forces = True
+    # table_options.enable_gyroscopic_forces = True
     table_options.default_dof_drive_mode = gymapi.DOF_MODE_NONE
     table_options.use_mesh_materials = False
     return table_options
@@ -149,7 +158,7 @@ def get_object_asset_options():
     object_asset_options.angular_damping = 0.5  # default = 0.5
     object_asset_options.max_angular_velocity = 64.0  # default = 64.0
     object_asset_options.disable_gravity = False
-    object_asset_options.enable_gyroscopic_forces = True
+    # object_asset_options.enable_gyroscopic_forces = True
     object_asset_options.default_dof_drive_mode = gymapi.DOF_MODE_NONE
     object_asset_options.use_mesh_materials = False
     object_asset_options.vhacd_enabled = True
@@ -227,7 +236,7 @@ def get_camera_params():
     camera_props.enable_tensors = True
     return camera_props
 
-def load_cameras(gym, sim, env_ptr, device, env_id, camera_props, camera_eye, camera_lookat, camera_depth_tensor_list, camera_rgb_tensor_list, camera_seg_tensor_list, camera_vinv_mat_list, camera_proj_mat_list, env_origin):
+def load_cameras(gym, sim, env_ptr, device, env_id, camera_props, camera_eye, camera_lookat, camera_depth_tensor_list, camera_seg_tensor_list, camera_vinv_mat_list, camera_proj_mat_list, env_origin):
 
     camera_handles = []
     depth_tensors = []
@@ -251,9 +260,9 @@ def load_cameras(gym, sim, env_ptr, device, env_id, camera_props, camera_eye, ca
     depth_tensor = gymtorch.wrap_tensor(raw_depth_tensor)
     depth_tensors.append(depth_tensor)
 
-    raw_rgb_tensor = gym.get_camera_image_gpu_tensor(sim, env_ptr, camera_handle, gymapi.IMAGE_COLOR)
-    rgb_tensor = gymtorch.wrap_tensor(raw_rgb_tensor)
-    rgb_tensors.append(rgb_tensor)
+    # raw_rgb_tensor = gym.get_camera_image_gpu_tensor(sim, env_ptr, camera_handle, gymapi.IMAGE_COLOR)
+    # rgb_tensor = gymtorch.wrap_tensor(raw_rgb_tensor)
+    # rgb_tensors.append(rgb_tensor)
 
     raw_seg_tensor = gym.get_camera_image_gpu_tensor(sim, env_ptr, camera_handle,
                                                             gymapi.IMAGE_SEGMENTATION)
@@ -271,7 +280,7 @@ def load_cameras(gym, sim, env_ptr, device, env_id, camera_props, camera_eye, ca
     camera_handles.append(camera_handle)
 
     camera_depth_tensor_list+=depth_tensors
-    camera_rgb_tensor_list+=rgb_tensors
+    # camera_rgb_tensor_list+=rgb_tensors
     camera_seg_tensor_list+=seg_tensors
     camera_vinv_mat_list+=vinv_mats
     camera_proj_mat_list+=proj_mats
@@ -429,14 +438,14 @@ def collect_pointclouds_legacy(gym, sim, robot_model, robot_state, num_envs, t, 
     return points_fps[..., [0, 1, 2, 6]]
 
 
-def collect_pointclouds(gym, sim, face_verts, obj_trans, obj_rot, obj_pc, robot_model, robot_state, hand_pos, num_envs, t, camera_props, camera_u2, camera_v2, env_origin, camera_depth_tensor_list, camera_rgb_tensor_list, camera_seg_tensor_list, camera_vinv_mat_list, camera_proj_mat_list, device, num_cameras=1):
+def collect_pointclouds(gym, sim, face_verts, obj_trans, obj_rot, obj_pc, robot_model, robot_state, hand_pos, num_envs, t, camera_props, camera_u2, camera_v2, env_origin, camera_depth_tensor_list, camera_seg_tensor_list, camera_vinv_mat_list, camera_proj_mat_list, device, num_cameras=1):
 
     # TODO: i will create a config file later
     x_n_bar = -5
     x_p_bar = 5
     y_n_bar = -5
     y_p_bar = 5
-    z_n_bar = 0.6075
+    z_n_bar = 0.6065
     z_p_bar = 5
     depth_bar = 5
     hand_sample_num = 1024
@@ -454,9 +463,9 @@ def collect_pointclouds(gym, sim, face_verts, obj_trans, obj_rot, obj_pc, robot_
     ], dim=-1)
     robot_model.set_parameters(robot_pose)
     robot_pc_fps = robot_model.get_surface_points()
-    tactile_points = robot_model.get_tactile_points()
-    tactile_points_object_frame = (tactile_points - obj_trans[:, None]) @ obj_rot
-    in_contact = torch.zeros_like(tactile_points[..., 0])
+    # tactile_points = robot_model.get_tactile_points()
+    # tactile_points_object_frame = (tactile_points - obj_trans[:, None]) @ obj_rot
+    # in_contact = torch.zeros_like(tactile_points[..., 0])
     # for i in range(num_envs):
     #     dis, dis_signs, _, _ = compute_sdf(tactile_points_object_frame[i], face_verts[i])
     #     dis = torch.sqrt(dis) * dis_signs
@@ -469,46 +478,47 @@ def collect_pointclouds(gym, sim, face_verts, obj_trans, obj_rot, obj_pc, robot_
         return tensor.reshape(-1, camera_num, *tensor.shape[1:])
 
     depth_tensor = split_first_dim(torch.stack(camera_depth_tensor_list), num_cameras)
-    rgb_tensor = split_first_dim(torch.stack(camera_rgb_tensor_list), num_cameras)
+    # rgb_tensor = split_first_dim(torch.stack(camera_rgb_tensor_list), num_cameras)
     seg_tensor = split_first_dim(torch.stack(camera_seg_tensor_list), num_cameras)
     vinv_mat = split_first_dim(torch.stack(camera_vinv_mat_list), num_cameras)
     proj_matrix = split_first_dim(torch.stack(camera_proj_mat_list), num_cameras)
 
     def visualize_sensors(env_id=0, t=0):
         COLOR3 =  torch.tensor([[0, 0, 0], [255, 0, 0], [0, 255, 0], [0, 0, 255]], device=device)
-        rgb_img = rgb_tensor[..., :3].to(device)
+        # rgb_img = rgb_tensor[..., :3].to(device)
         background = torch.zeros_like(rgb_img)
         background[..., 0] = 255
         seg_img = COLOR3[seg_tensor.long().to(device)].to(device)
         rgb_img = torch.where((seg_tensor==0).unsqueeze(-1).to(device), background, rgb_img)
         depth_img = depth_tensor.to(device)
-        def save_img2(name, rgb_img, seg_img, dep_img):
+        def save_img2(name, seg_img, dep_img):
             import cv2
             import os
             save_dir = 'tmp/vis/diffusion'
             os.makedirs(save_dir, exist_ok=True)
-            # cv2.imwrite(osp.join(save_dir, f'{name}_depth.png'), dep_img)
-            cv2.imwrite(os.path.join(save_dir, f'{name}_rgb.png'), rgb_img)
+            cv2.imwrite(osp.join(save_dir, f'{name}_depth.png'), dep_img)
+            # cv2.imwrite(os.path.join(save_dir, f'{name}_rgb.png'), rgb_img)
             # cv2.imwrite(osp.join(save_dir, f'{name}_seg.png'), seg_img)
             return
-        rgb_img = rgb_tensor[env_id, 0, :, :, :3].cpu().numpy()
+        # rgb_img = rgb_tensor[env_id, 0, :, :, :3].cpu().numpy()
         seg_img = COLOR3[seg_tensor[env_id,0].long().to(device)].cpu().numpy()
         dep_img = np.zeros_like(rgb_img)
         dep_img[..., 2] = -100 * depth_img[env_id].cpu().numpy()
-        save_img2(f'env_{env_id}_{t}_camera', rgb_img, seg_img, dep_img)
+        save_img2(f'env_{env_id}_{t}_camera', seg_img, dep_img)
         return
 
     # print(step_counter)
     # print(root_state_tensor[hand_indices, 0:3])
     # pdb.set_trace()
     # for i in range(num_envs):
-    visualize_sensors(0, t)
+    # visualize_sensors(0, t)
 
     point_list = []
     valid_list = []
+    depth_tensor = torch.nn.functional.avg_pool2d(depth_tensor, 3, stride=1, padding=1, count_include_pad=False)
     for i in range(num_cameras):
         # (num_envs, num_pts, 7) (num_envs, num_pts)
-        point, valid = depth_image_to_point_cloud_GPU_batch(depth_tensor[:, i], rgb_tensor[:, i], seg_tensor[:, i],
+        point, valid = depth_image_to_point_cloud_GPU_batch(depth_tensor[:, i], seg_tensor[:, i],
                                                             vinv_mat[:, i], proj_matrix[:, i],
                                                             camera_u2, camera_v2, camera_props.width,
                                                             camera_props.height, depth_bar, device,
@@ -642,7 +652,7 @@ def rand_select(tensor, mask, target_num):
     return flat_tensor.reshape(mask.shape[0], target_num, -1)
 
 def depth_image_to_point_cloud_GPU_batch(
-        camera_depth_tensor_batch, camera_rgb_tensor_batch,
+        camera_depth_tensor_batch,
         camera_seg_tensor_batch, camera_view_matrix_inv_batch,
         camera_proj_matrix_batch, u, v, width: float, height: float,
         depth_bar: float, device: torch.device,
@@ -652,7 +662,7 @@ def depth_image_to_point_cloud_GPU_batch(
     batch_num = camera_depth_tensor_batch.shape[0]
 
     depth_buffer_batch = mov(camera_depth_tensor_batch, device)
-    rgb_buffer_batch = mov(camera_rgb_tensor_batch, device) / 255.0
+    # rgb_buffer_batch = mov(camera_rgb_tensor_batch, device) / 255.0
     seg_buffer_batch = mov(camera_seg_tensor_batch, device)
 
     # Get the camera view matrix and invert it to transform points from camera to world space
@@ -675,9 +685,9 @@ def depth_image_to_point_cloud_GPU_batch(
     X_batch = -(u.view(1, u.shape[-2], u.shape[-1]) - centerU) / width * Z_batch * fu_batch.view(-1, 1, 1)
     Y_batch = (v.view(1, v.shape[-2], v.shape[-1]) - centerV) / height * Z_batch * fv_batch.view(-1, 1, 1)
 
-    R_batch = rgb_buffer_batch[..., 0].view(batch_num, 1, -1)
-    G_batch = rgb_buffer_batch[..., 1].view(batch_num, 1, -1)
-    B_batch = rgb_buffer_batch[..., 2].view(batch_num, 1, -1)
+    # R_batch = rgb_buffer_batch[..., 0].view(batch_num, 1, -1)
+    # G_batch = rgb_buffer_batch[..., 1].view(batch_num, 1, -1)
+    # B_batch = rgb_buffer_batch[..., 2].view(batch_num, 1, -1)
     S_batch = seg_buffer_batch.view(batch_num, 1, -1)
 
     valid_depth_batch = Z_batch.view(batch_num, -1) > -depth_bar
@@ -687,12 +697,12 @@ def depth_image_to_point_cloud_GPU_batch(
     Y_batch = Y_batch.view(batch_num, 1, -1)
     O_batch = torch.ones((X_batch.shape), device=device)
 
-    position_batch = torch.cat((X_batch, Y_batch, Z_batch, O_batch, R_batch, G_batch, B_batch, S_batch), dim=1)
+    position_batch = torch.cat((X_batch, Y_batch, Z_batch, O_batch, S_batch), dim=1)
     # (b, N, 8)
     position_batch = position_batch.permute(0, 2, 1)
     position_batch[..., 0:4] = position_batch[..., 0:4] @ vinv_batch
 
-    points_batch = position_batch[..., [0, 1, 2, 4, 5, 6, 7]]
+    points_batch = position_batch[..., [0, 1, 2, 4]]
     valid_batch = valid_depth_batch  # * valid_z_p_batch * valid_z_n_batch
 
     return points_batch, valid_batch
@@ -718,3 +728,30 @@ def input_wrapper(robot_model, robot_state, rigid_body_state, hand_idx, prev_pos
     pc = update_seg(pc, tac_pc, with_tac=with_tactile)
     robot_state = torch.cat([robot_state, prev_targets, prev_targets-prev_position], dim=-1)
     return robot_state, pc
+
+def quat_mul(a, b):
+    assert a.shape == b.shape
+    shape = a.shape
+    a = a.reshape(-1, 4)
+    b = b.reshape(-1, 4)
+
+    x1, y1, z1, w1 = a[:, 0], a[:, 1], a[:, 2], a[:, 3]
+    x2, y2, z2, w2 = b[:, 0], b[:, 1], b[:, 2], b[:, 3]
+    ww = (z1 + x1) * (x2 + y2)
+    yy = (w1 - y1) * (w2 + z2)
+    zz = (w1 + y1) * (w2 - z2)
+    xx = ww + yy + zz
+    qq = 0.5 * (xx + (z1 - x1) * (x2 - y2))
+    w = qq - ww + (z1 - y1) * (y2 - z2)
+    x = qq - xx + (x1 + w1) * (x2 + w2)
+    y = qq - yy + (w1 - x1) * (y2 + z2)
+    z = qq - zz + (z1 + y1) * (w2 - x2)
+
+    quat = torch.stack([x, y, z, w], dim=-1).view(shape)
+
+    return quat
+
+def quat_conjugate(a):
+    shape = a.shape
+    a = a.reshape(-1, 4)
+    return torch.cat((-a[:, :3], a[:, -1:]), dim=-1).view(shape)

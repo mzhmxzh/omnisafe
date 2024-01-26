@@ -13,7 +13,13 @@ from collections import OrderedDict
 from isaacgym import gymapi, gymtorch
 from pytorch3d import transforms as pttf
 # from torchprimitivesdf.sdf import box_sdf
+# from pykin.kinematics.transform import Transform
+# from pykin.robots.single_arm import SingleArm
+# from pykin.utils import plot_utils as p_utils
 from utils.robot_model import RobotModel
+# from utils.robot_info import OLD_HOME_POSE
+
+# init_thetas = OLD_HOME_POSE[:6].cpu().numpy().tolist()
 
 def box_sdf(points, extents):
     q = points.abs() - extents
@@ -22,6 +28,8 @@ def box_sdf(points, extents):
 def init():
     global arm
     arm = ikpy.chain.Chain.from_urdf_file('data/ur_description/urdf/ur5_simplified.urdf', active_links_mask=[False, True, True, True, True, True, True, False])
+    # arm = SingleArm("urdf/ur5/ur5_simplified.urdf", Transform(rot=[0.0, 0.0, 0.0], pos=[0, 0, 0]))
+    # arm.setup_link_name("base_link", "hand_base_link")
 
 def direct(bias, old_arm_pose):
     global arm
@@ -75,22 +83,20 @@ class SafetyWrapper():
         self.pool = multiprocessing.Pool(10, initializer=init)
         self.gravity_dir = torch.tensor([[0.],[0.],[-1.]],device=self.device, dtype=torch.float)
         self.obj_bias = 0.02
-        # self.rigid_body_dict ={'base_link': 0, 'dip': 10, 'dip_2': 18, 'dip_3': 22, 'fingertip': 11, 
-        # 'fingertip_2': 19, 'fingertip_3': 23, 'forearm_link': 3, 'hand_base_link': 7, 'mcp_joint': 8, 
-        # 'mcp_joint_2': 16, 'mcp_joint_3': 20, 'pip': 9, 'pip_2': 17, 'pip_3': 21, 'pip_4': 12, 
-        # 'shoulder_link': 1, 'thumb_dip': 14, 'thumb_fingertip': 15, 'thumb_pip': 13, 'upper_arm_link': 2, 
-        # 'wrist_1_link': 4, 'wrist_2_link': 5, 'wrist_3_link': 6}
+        self.rigid_body_dict ={'base_link': 0, 'dip': 10, 'dip_2': 18, 'dip_3': 22, 'fingertip': 11, 
+        'fingertip_2': 19, 'fingertip_3': 23, 'forearm_link': 3, 'hand_base_link': 7, 'mcp_joint': 8, 
+        'mcp_joint_2': 16, 'mcp_joint_3': 20, 'pip': 9, 'pip_2': 17, 'pip_3': 21, 'pip_4': 12, 
+        'shoulder_link': 1, 'thumb_dip': 14, 'thumb_fingertip': 15, 'thumb_pip': 13, 'upper_arm_link': 2, 
+        'wrist_1_link': 4, 'wrist_2_link': 5, 'wrist_3_link': 6}
         self.fingertip_rigid_bodies = [11,19,23,15]
         
-    def direct(self, actions, execute=True):
+    def direct(self, actions):
         # return actions
         origin_pose = torch.tensor([[0,0,0,1,0,0,0,1,0]], dtype=actions.dtype, device=actions.device).repeat(len(actions), 1)
         robot_pose = torch.cat([origin_pose, actions], dim=-1)
         self.robot_model.set_parameters(robot_pose)
         collision_vertices = self.robot_model.get_collision_vertices(self.link_names+["upper_arm_link"])
         torch_bias = torch.clamp(0.002+self.box_origin[-1]-self.box_extents[-1]-collision_vertices[..., 2].min(dim=1).values, min=0)
-        if not execute:
-            return torch_bias>0
         bias = torch_bias.cpu().numpy()
         old_arm_pose = actions[:, :6].cpu().numpy()
 
@@ -132,7 +138,7 @@ class SafetyWrapper():
         fingertip_indices = [4,8,12,16]
         fforce_fingertip = isaac.force_sensor.reshape(isaac.num_envs, -1, 6)[:, isaac.fforces_idx, :3][:,fingertip_indices,:]
         fforce_max_env = fforce_fingertip.max(dim=1)[0]
-        unsafe_mask = torch.logical_or(fforce_max_env[:,0] > thr_x, fforce_max_env[:,2] > thr_z)[lift_idx]
+        unsafe_mask = torch.logical_or(fforce_max_env[:,0].abs() > thr_x, fforce_max_env[:,2].abs() > thr_z)[lift_idx]
 
         unsafe_idx = torch.arange(len(actions),device=actions.device)[unsafe_mask]
         if len(unsafe_idx) == 0:
