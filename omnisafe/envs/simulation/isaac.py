@@ -498,59 +498,67 @@ class Env():
             self.gym.apply_rigid_body_force_tensors(self.sim, gymtorch.unwrap_tensor(self.rb_forces), None,
                                                     gymapi.LOCAL_SPACE)
 
-        self.clone_backup_states()
+        if self.config.with_safety_wrapper:
+            self.clone_backup_states()
 
-        # pre-pseudo wrapper: check table penetration
-        if actions is not None:
-            lift_mask = (self.progress_buf >= 0)
-            if lift_mask.sum():
-                lift_idx = torch.arange(0, self.num_envs, device=self.device, dtype=torch.long)[lift_mask]
-                self.target[lift_idx], self.unsafe[lift_idx], self.tpen[self.progress_buf >= 0] = self.safety_wrapper(actions[lift_idx].clone(),lift_idx,pseudo=True)
-            # self.rollback_buf[lift_idx] = self.unsafe[lift_idx].clone().bool()
+            # pre-pseudo wrapper: check table penetration
+            if actions is not None:
+                lift_mask = (self.progress_buf >= 0)
+                if lift_mask.sum():
+                    lift_idx = torch.arange(0, self.num_envs, device=self.device, dtype=torch.long)[lift_mask]
+                    self.target[lift_idx], self.unsafe[lift_idx], self.tpen[self.progress_buf >= 0] = self.safety_wrapper(actions[lift_idx].clone(),lift_idx,pseudo=True)
+                # self.rollback_buf[lift_idx] = self.unsafe[lift_idx].clone().bool()
 
-            # if self.config.physics_randomization and with_delay:
-            #     self.adr_last_action_queue, self.target = update_delay_queue(self.adr_last_action_queue, self.target, self.adr_cfg)
+                # if self.config.physics_randomization and with_delay:
+                #     self.adr_last_action_queue, self.target = update_delay_queue(self.adr_last_action_queue, self.target, self.adr_cfg)
 
-        # pseudo-execution
-        self.prev_dof_pos = self.dof_state_tensor[:, :, 0].clone()
-        self.global_z_sensor_read = self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.global_forces_idx, 2].sum(dim=1).clone()
-        assert self.global_z_sensor_read.dim() == 1, self.global_z_sensor_read.shape
-        z_sensor_min = self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.global_forces_idx, 2].sum(dim=1).min(dim=0)[0].clone() + 10000
-        z_sensor_max = self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.global_forces_idx, 2].sum(dim=1).max(dim=0)[0].clone() - 10000
-        for step in range(self.substeps):
-            # linear interpolation. Subaction represneted as target pos
-            subactions = self.prev_dof_pos + (self.target - self.prev_dof_pos) * (step+1) / self.substeps
-            self.substep(subactions)
-            sub_global_z_sensor_read = self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.global_forces_idx, 2].sum(dim=1).clone()
-            self.global_z_sensor_read = torch.where(sub_global_z_sensor_read > self.global_z_sensor_read, sub_global_z_sensor_read, self.global_z_sensor_read)
-            sub_z_sensor_min = self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.global_forces_idx, 2].sum(dim=1).min(dim=0)[0].clone()
-            sub_z_sensor_max = self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.global_forces_idx, 2].sum(dim=1).max(dim=0)[0].clone()
-            z_sensor_min = torch.where(sub_z_sensor_min < z_sensor_min, sub_z_sensor_min, z_sensor_min)
-            z_sensor_max = torch.where(sub_z_sensor_max > z_sensor_max, sub_z_sensor_max, z_sensor_max)
-        
-        # print("force sensor on hand")
-        # print(self.global_z_sensor_read.mean())
-        # print(z_sensor_min)
-        # print(z_sensor_max)
-        # fingertip_indices = [4,8,12,16]
-        # print(self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.fforces_idx, :3][:,fingertip_indices,:].max(dim=1)[0].max(dim=0)[0])
+            # pseudo-execution
+            self.prev_dof_pos = self.dof_state_tensor[:, :, 0].clone()
+            self.global_z_sensor_read = self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.global_forces_idx, 2].sum(dim=1).clone()
+            assert self.global_z_sensor_read.dim() == 1, self.global_z_sensor_read.shape
+            z_sensor_min = self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.global_forces_idx, 2].sum(dim=1).min(dim=0)[0].clone() + 10000
+            z_sensor_max = self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.global_forces_idx, 2].sum(dim=1).max(dim=0)[0].clone() - 10000
+            for step in range(self.substeps):
+                # linear interpolation. Subaction represneted as target pos
+                subactions = self.prev_dof_pos + (self.target - self.prev_dof_pos) * (step+1) / self.substeps
+                self.substep(subactions)
+                sub_global_z_sensor_read = self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.global_forces_idx, 2].sum(dim=1).clone()
+                self.global_z_sensor_read = torch.where(sub_global_z_sensor_read > self.global_z_sensor_read, sub_global_z_sensor_read, self.global_z_sensor_read)
+                sub_z_sensor_min = self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.global_forces_idx, 2].sum(dim=1).min(dim=0)[0].clone()
+                sub_z_sensor_max = self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.global_forces_idx, 2].sum(dim=1).max(dim=0)[0].clone()
+                z_sensor_min = torch.where(sub_z_sensor_min < z_sensor_min, sub_z_sensor_min, z_sensor_min)
+                z_sensor_max = torch.where(sub_z_sensor_max > z_sensor_max, sub_z_sensor_max, z_sensor_max)
             
-        # post-pseudo wrapper: check obj/finger penetration
-        if actions is not None:
-            lift_mask = (self.progress_buf >= 0)
-            lift_idx = torch.arange(0, self.num_envs, device=self.device, dtype=torch.long)[lift_mask]
-            self.target[lift_idx], self.rollback_buf[lift_idx], _ = self.safety_wrapper(actions[lift_idx].clone(),lift_idx,pseudo=False)
+            # print("force sensor on hand")
+            # print(self.global_z_sensor_read.mean())
+            # print(z_sensor_min)
+            # print(z_sensor_max)
+            # fingertip_indices = [4,8,12,16]
+            # print(self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.fforces_idx, :3][:,fingertip_indices,:].max(dim=1)[0].max(dim=0)[0])
+                
+            # post-pseudo wrapper: check obj/finger penetration
+            if actions is not None:
+                lift_mask = (self.progress_buf >= 0)
+                lift_idx = torch.arange(0, self.num_envs, device=self.device, dtype=torch.long)[lift_mask]
+                self.target[lift_idx], self.rollback_buf[lift_idx], _ = self.safety_wrapper(actions[lift_idx].clone(),lift_idx,pseudo=False)
 
-            # if self.config.physics_randomization and with_delay:
-            #     self.adr_last_action_queue, self.target = update_delay_queue(self.adr_last_action_queue, self.target, self.adr_cfg)
+                # if self.config.physics_randomization and with_delay:
+                #     self.adr_last_action_queue, self.target = update_delay_queue(self.adr_last_action_queue, self.target, self.adr_cfg)
 
-        # rollback envs with unsafe contact, essentially skip one step of execution.
-        # Thus Dagger does not see unsafe actions.
-        # print(self.rollback_buf.sum())
-        if self.rollback_buf.sum() > 0:
-            self.rollback(self.rollback_buf)
+            # rollback envs with unsafe contact, essentially skip one step of execution.
+            # Thus Dagger does not see unsafe actions.
+            # print(self.rollback_buf.sum())
+            if self.rollback_buf.sum() > 0:
+                self.rollback(self.rollback_buf)
+            
+            
+            # if ad-hoc lifting is needed for unsafe envs, implement here
+        else:
+            if actions is not None:
+                self.target = actions.clone()
+            self.global_z_sensor_read = self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.global_forces_idx, 2].sum(dim=1).clone()
 
-        # if ad-hoc lifting is needed for unsafe envs, implement here
+        
         self.prev_dof_pos = self.dof_state_tensor[:, :, 0].clone()
         for step in range(self.substeps):
             # linear interpolation. Subaction represneted as target pos
@@ -794,7 +802,7 @@ class Env():
 
     def clone_backup_states(self):
         self.backup_root_state_tensor = gymtorch.wrap_tensor(self.gym.acquire_actor_root_state_tensor(self.sim)).clone()
-        self.backup_dof_state_tensor = gymtorch.wrap_tensor(self.gym.acquire_dof_state_tensor(self.sim)).clone()
+        self.backup_dof_state_tensor = gymtorch.wrap_tensor(self.gym.acquire_dof_state_tensor(self.sim)).clone().reshape(self.num_envs, 22, -1)
         # self.backup_dof_force_tensor = gymtorch.wrap_tensor(self.gym.acquire_dof_force_tensor(self.sim)).clone()
         self.backup_rigid_body_state_tensor = gymtorch.wrap_tensor(self.gym.acquire_rigid_body_state_tensor(self.sim)).clone()
         # self.backup_env_rb_states = [self.gym.get_env_rigid_body_states(self.envs[i],gymapi.STATE_ALL) for i in range(self.num_envs)]

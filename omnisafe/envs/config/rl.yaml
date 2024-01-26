@@ -29,6 +29,8 @@ back_step_range: [0, 15]
 p: 727
 d: 15
 
+with_safety_wrapper: 0
+
 num_envs: 100
 num_obj_per_env: 1
 
@@ -76,7 +78,7 @@ trans_reward_weight: 10.0
 rot_reward_weight: 1.0
 qpos_reward_weight: 0.5
 
-reward_type: staged2
+reward_type: staged2_lhr
 
 wrapper_object: True
 wrapper_finger: False
