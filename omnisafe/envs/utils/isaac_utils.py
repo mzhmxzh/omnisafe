@@ -502,7 +502,7 @@ def collect_pointclouds(gym, sim, face_verts, obj_trans, obj_rot, obj_pc, robot_
     # print(root_state_tensor[hand_indices, 0:3])
     # pdb.set_trace()
     # for i in range(num_envs):
-    # visualize_sensors(0, t)
+    visualize_sensors(0, t)
 
     point_list = []
     valid_list = []

@@ -90,6 +90,9 @@ class OnPolicyAdapter(OnlineAdapter):
             if self._cfgs.algo_cfgs.use_cost:
                 logger.store({'Value/cost': value_c})
             logger.store({'Value/reward': value_r})
+            
+            for key in ['obj_dis_reward', 'reach_reward', 'action_pen', 'contact_reward', 'lift_reward', 'real_obj_height', 'tpen', 'reward']:
+                logger.store({'Rewards/' + key: info[key]})
 
             buffer.store(
                 obs=obs,

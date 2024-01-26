@@ -69,7 +69,19 @@ class SafetyDexgraspEnv(CMDP):
         # TODO: calculate cost
         cost = current_state['cost']
         
-        return net_input, current_state['reward'], cost, terminated, truncated, dict(success=self._env.record_success)
+        info = dict(
+            success=self._env.record_success, 
+            obj_dis_reward=current_state['obj_dis_reward'],
+            reach_reward=current_state['reach_reward'],
+            action_pen=current_state['action_pen'],
+            contact_reward=current_state['contact_reward'],
+            lift_reward=current_state['lift_reward'],
+            real_obj_height=current_state['real_obj_height'],
+            tpen=current_state['tpen'],
+            reward=current_state['reward'], 
+        )
+        
+        return net_input, current_state['reward'], cost, terminated, truncated, info
     
     def reset(
         self,

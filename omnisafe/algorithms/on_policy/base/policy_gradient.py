@@ -194,6 +194,15 @@ class PolicyGradient(BaseAlgo):
         self._logger.register_key('Metrics/EpCost', window_length=50)
         self._logger.register_key('Metrics/EpLen', window_length=50)
         self._logger.register_key('Metrics/Succ', window_length=50)
+        
+        self._logger.register_key('Rewards/obj_dis_reward', window_length=50)
+        self._logger.register_key('Rewards/reach_reward', window_length=50)
+        self._logger.register_key('Rewards/action_pen', window_length=50)
+        self._logger.register_key('Rewards/contact_reward', window_length=50)
+        self._logger.register_key('Rewards/lift_reward', window_length=50)
+        self._logger.register_key('Rewards/real_obj_height', window_length=50)
+        self._logger.register_key('Rewards/tpen', window_length=50)
+        self._logger.register_key('Rewards/reward', window_length=50)
 
         self._logger.register_key('Train/Epoch')
         self._logger.register_key('Train/Entropy')

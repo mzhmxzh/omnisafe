@@ -1,7 +1,7 @@
 control_hz: 10
 env_hz: 60
 use_viewer: 0
-use_camera: 0
+use_camera: 1
 num_envs: 100
 num_obj_per_env: 1
 object_code: [sem-Car-da496ba5f90a476a1493b1a3f79fe4c6_006]
@@ -12,7 +12,7 @@ init_timesteps: 11
 act_timesteps: 44
 rand_radius: 0.1
 robot_pc_points: 2048
-load_traj: 0
+load_traj: 1
 asset_path: data
 assets_dir: data/meshdatav3_scaled
 data_root: data

@@ -451,15 +451,13 @@ class Env():
                 self.robot_state_tensor_initial[i, :, 0] = torch.from_numpy(qpos).float().to(self.device)
         else:
             self.robot_state_tensor_initial[indices] = self.robot_state_tensor_initial_save[indices]
-        for index in indices:
-            self.robot_state_tensor_initial[index.item(),:,1] = 0
+        self.robot_state_tensor_initial[indices,:,1] = 0
         self.robot_indices_flat = self.robot_indices[indices].to(torch.int32).reshape(-1)
         self.gym.set_dof_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(self.robot_state_tensor_initial),
                                               gymtorch.unwrap_tensor(self.robot_indices_flat), len(self.robot_indices_flat))
         self.target[indices] = self.robot_state_tensor_initial[indices,:,0].clone()
         self.progress_buf[indices] = -self.config.init_timesteps
-        for index in indices:
-            self.goal[index.item()] = 0
+        self.goal[indices] = 0
         if self.config.actor.with_rot:
             self.goal_rot[indices] = pttf.random_rotations(len(indices), device=self.device)
     
@@ -597,7 +595,7 @@ class Env():
         result_dict['goal'] = self.goal.clone() if self.config.actor.with_goal else None
         if self.config.use_camera:
             #t = time.time()
-            result_dict['pc'] = collect_pointclouds(self.gym, self.sim, [fv[self.current_obj_idx[i]] for i, fv in enumerate(self.face_verts)], obj_trans, obj_rot_mat, result_dict['obj_pc'].clone(), self.robot_model, result_dict['dof_pos'], self.rigid_body_state_tensor[:, self.hand_idx, :3], self.config.num_envs, self.progress_buf[0].item(), self.camera_props, self.camera_u2, self.camera_v2, self.env_origin, self.camera_depth_tensor_list, self.camera_rgb_tensor_list, self.camera_seg_tensor_list, self.camera_vinv_tensor_list, self.camera_proj_tensor_list, self.device)
+            collect_pointclouds(self.gym, self.sim, [fv[self.current_obj_idx[i]] for i, fv in enumerate(self.face_verts)], obj_trans, obj_rot_mat, result_dict['obj_pc'].clone(), self.robot_model, result_dict['dof_pos'], self.rigid_body_state_tensor[:, self.hand_idx, :3], self.config.num_envs, self.progress_buf[0].item(), self.camera_props, self.camera_u2, self.camera_v2, self.env_origin, self.camera_depth_tensor_list, self.camera_rgb_tensor_list, self.camera_seg_tensor_list, self.camera_vinv_tensor_list, self.camera_proj_tensor_list, self.device)
             #print(f"camera time:{time.time() - t}")
         if self.use_adr:
             result_dict['available'] = torch.logical_and(result_dict['available'], (self.worker_types == RolloutWorkerModes.ADR_ROLLOUT))
@@ -819,9 +817,9 @@ class Env():
 
             cost = torch.logical_or(cost_tpen, cost_object)
             cost = torch.logical_or(cost, cost_finger)
-            assert cost_tpen.sum() == 0, "tpen"
-            assert cost_object.sum() == 0, "object"
-            assert cost_finger.sum() == 0, "finger"
+            # assert cost_tpen.sum() == 0, "tpen"
+            # assert cost_object.sum() == 0, "object"
+            # assert cost_finger.sum() == 0, "finger"
             # print("******************")
             # print(self.global_z_sensor_read.max())
             # print(fforce_max_env.max(dim=0)[0])
