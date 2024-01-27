@@ -98,7 +98,7 @@ class PolicyGradient(BaseAlgo):
             epochs=self._cfgs.train_cfgs.epochs,
         ).to(self._device)
         
-        if self._cfgs.train_cfgs.train:
+        if not self._cfgs.train_cfgs.train:
             for param in self._actor_critic.actor.parameters():
                 param.requires_grad = False
             for param in self._actor_critic.reward_critic.parameters():
