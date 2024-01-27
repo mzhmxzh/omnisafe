@@ -369,8 +369,8 @@ class PolicyGradient(BaseAlgo):
                 adv_r,
                 adv_c,
             ) in dataloader:
-                for param_group in self._actor_critic.actor_critic_optimizer.param_groups:
-                    param_group['lr'] = self._step_size
+                # for param_group in self._actor_critic.actor_critic_optimizer.param_groups:
+                    # param_group['lr'] = self._step_size
                 for param_group in self._actor_critic.actor_optimizer.param_groups:
                     param_group['lr'] = self._step_size
                 for param_group in self._actor_critic.reward_critic_optimizer.param_groups:
