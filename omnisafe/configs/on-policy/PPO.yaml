@@ -21,7 +21,7 @@ defaults:
     # device to use for training, options: cpu, cuda, cuda:0, cuda:0,1, etc.
     device: cuda:3
     # number of threads for torch
-    torch_threads: 16
+    torch_threads: 1
     # number of vectorized environments
     vector_env_nums: 1
     # number of parallel agent, similar to a3c
@@ -35,7 +35,7 @@ defaults:
     # number of iterations to update the policy
     update_iters: 1
     # batch size for each iteration
-    batch_size: 128
+    batch_size: 256
     # target kl divergence
     target_kl: 0.02
     # entropy coefficient
@@ -97,11 +97,11 @@ defaults:
     # actor type, options: gaussian, gaussian_learning
     actor_type: pointnet_mlp_actor
     # linear learning rate decay
-    linear_lr_decay: True
+    linear_lr_decay: False
     # exploration noise anneal
     exploration_noise_anneal: False
     # std upper bound, and lower bound
-    std_range: [0.5, 0.1]
+    std_range: [50000000000000, 0.000000000000001]
     # actor network configurations
     actor:
       # hidden layer sizes

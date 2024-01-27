@@ -285,11 +285,11 @@ class PolicyGradient(BaseAlgo):
             self._update()
             self._logger.store({'Time/Update': time.time() - update_time})
 
-            if self._cfgs.model_cfgs.exploration_noise_anneal:
-                self._actor_critic.annealing(epoch)
+            # if self._cfgs.model_cfgs.exploration_noise_anneal:
+            #     self._actor_critic.annealing(epoch)
 
-            if self._cfgs.model_cfgs.actor.lr is not None:
-                self._actor_critic.actor_scheduler.step()
+            # if self._cfgs.model_cfgs.actor.lr is not None:
+            #     self._actor_critic.actor_scheduler.step()
 
             self._logger.store(
                 {

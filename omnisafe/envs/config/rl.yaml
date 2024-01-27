@@ -31,7 +31,7 @@ d: 15
 
 with_safety_wrapper: 0
 
-num_envs: 100
+num_envs: 1000
 num_obj_per_env: 1
 
 actor:
