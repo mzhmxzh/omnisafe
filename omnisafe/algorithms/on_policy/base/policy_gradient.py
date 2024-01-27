@@ -97,6 +97,15 @@ class PolicyGradient(BaseAlgo):
             model_cfgs=self._cfgs.model_cfgs,
             epochs=self._cfgs.train_cfgs.epochs,
         ).to(self._device)
+        
+        if self._cfgs.train_cfgs.train:
+            for param in self._actor_critic.actor.parameters():
+                param.requires_grad = False
+            for param in self._actor_critic.reward_critic.parameters():
+                param.requires_grad = False
+            if self._cfgs.algo_cfgs.use_cost:
+                for param in self._actor_critic.cost_critic.parameters():
+                    param.requires_grad = False
 
         if distributed.world_size() > 1:
             distributed.sync_params(self._actor_critic)
