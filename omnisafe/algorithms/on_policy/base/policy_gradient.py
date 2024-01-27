@@ -547,7 +547,7 @@ class PolicyGradient(BaseAlgo):
     ) -> None:
         adv = self._compute_adv_surrogate(adv_r, adv_c)
         loss_pi = self._loss_pi(obs, act, logp, adv)
-        loss_v = nn.functional.mse_loss(self._actor_critic.reward_critic(self._actor_critic.actor._obs_feature)[0], target_value_r)
+        loss_v = nn.functional.mse_loss(self._actor_critic.reward_critic(self._actor_critic.actor._obs_feature), target_value_r)
         loss = loss_pi + 2 * loss_v
         self._actor_critic.actor_critic_optimizer.zero_grad()
         loss.backward()
