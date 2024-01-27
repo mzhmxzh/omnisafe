@@ -484,34 +484,34 @@ def collect_pointclouds(gym, sim, face_verts, obj_trans, obj_rot, obj_pc, robot_
     proj_matrix = split_first_dim(torch.stack(camera_proj_mat_list), num_cameras)
 
     def visualize_sensors(env_id=0, t=0):
-        COLOR3 =  torch.tensor([[0, 0, 0], [255, 0, 0], [0, 255, 0], [0, 0, 255]], device=device)
+        # COLOR3 =  torch.tensor([[0, 0, 0], [255, 0, 0], [0, 255, 0], [0, 0, 255]], device=device)
         # rgb_img = rgb_tensor[..., :3].to(device)
-        background = torch.zeros_like(rgb_img)
-        background[..., 0] = 255
-        seg_img = COLOR3[seg_tensor.long().to(device)].to(device)
-        rgb_img = torch.where((seg_tensor==0).unsqueeze(-1).to(device), background, rgb_img)
+        # background = torch.zeros_like(rgb_img)
+        # background[..., 0] = 255
+        # seg_img = COLOR3[seg_tensor.long().to(device)].to(device)
+        # rgb_img = torch.where((seg_tensor==0).unsqueeze(-1).to(device), background, rgb_img)
         depth_img = depth_tensor.to(device)
-        def save_img2(name, seg_img, dep_img):
+        def save_img2(name, dep_img):
             import cv2
             import os
             save_dir = 'tmp/vis/diffusion'
             os.makedirs(save_dir, exist_ok=True)
-            cv2.imwrite(osp.join(save_dir, f'{name}_depth.png'), dep_img)
+            cv2.imwrite(os.path.join(save_dir, f'{name}_depth.png'), dep_img)
             # cv2.imwrite(os.path.join(save_dir, f'{name}_rgb.png'), rgb_img)
             # cv2.imwrite(osp.join(save_dir, f'{name}_seg.png'), seg_img)
             return
         # rgb_img = rgb_tensor[env_id, 0, :, :, :3].cpu().numpy()
-        seg_img = COLOR3[seg_tensor[env_id,0].long().to(device)].cpu().numpy()
-        dep_img = np.zeros_like(rgb_img)
-        dep_img[..., 2] = -100 * depth_img[env_id].cpu().numpy()
-        save_img2(f'env_{env_id}_{t}_camera', seg_img, dep_img)
+        # seg_img = COLOR3[seg_tensor[env_id,0].long().to(device)].cpu().numpy()
+        dep_img = -100 * depth_img[env_id].cpu().numpy()
+        dep_img = np.stack([dep_img, dep_img, dep_img], axis=-1).astype(np.uint8)[0]
+        save_img2(f'env_{env_id}_{t}_camera', dep_img)
         return
 
     # print(step_counter)
     # print(root_state_tensor[hand_indices, 0:3])
     # pdb.set_trace()
     # for i in range(num_envs):
-    # visualize_sensors(0, t)
+    visualize_sensors(0, t)
 
     point_list = []
     valid_list = []
