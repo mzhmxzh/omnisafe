@@ -557,7 +557,8 @@ class PolicyGradient(BaseAlgo):
                 self._cfgs.algo_cfgs.max_grad_norm,
             )
         distributed.avg_grads(self._actor_critic)
-        self._actor_critic.actor_critic_optimizer.step()
+        if self._cfgs.train_cfgs.train:
+            self._actor_critic.actor_critic_optimizer.step()
         
         self._logger.store({'Loss/Loss_reward_critic': loss_v.mean().item()})
         
