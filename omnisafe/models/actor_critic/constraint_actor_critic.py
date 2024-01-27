@@ -25,6 +25,8 @@ from omnisafe.models.critic.critic_builder import CriticBuilder
 from omnisafe.typing import OmnisafeSpace
 from omnisafe.utils.config import ModelConfig
 from gymnasium import spaces
+from collections import OrderedDict
+from utils.config import load_config, DotDict
 
 
 class ConstraintActorCritic(ActorCritic):
@@ -74,6 +76,14 @@ class ConstraintActorCritic(ActorCritic):
             use_obs_encoder=False,
         ).build_critic('mlp')
         self.add_module('cost_critic', self.cost_critic)
+        
+        model_path = load_config('config/rl.yaml', DotDict()).model_path
+        if model_path is not None:
+            state_dict = torch.load(model_path, map_location='cpu')['policy']
+            actor_state_dict = OrderedDict([(key[key.index('.') + 1:], state_dict[key]) for key in state_dict if key.startswith('actor.')])
+            critic_state_dict = OrderedDict([(key[key.index('.') + 1:], state_dict[key]) for key in state_dict if key.startswith('critic.')])
+            self.actor.load_state_dict(actor_state_dict)
+            self.reward_critic[0].load_state_dict(critic_state_dict)
         
         self.actor_critic_optimizer: optim.Optimizer = optim.Adam(self.parameters(), lr=model_cfgs.actor.lr)
 

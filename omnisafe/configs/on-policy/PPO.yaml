@@ -18,6 +18,8 @@ defaults:
   seed: 0
   # training configurations
   train_cfgs:
+    # train
+    train: 1
     # device to use for training, options: cpu, cuda, cuda:0, cuda:0,1, etc.
     device: cuda:3
     # number of threads for torch
