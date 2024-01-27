@@ -554,8 +554,9 @@ class Env():
             
             # if ad-hoc lifting is needed for unsafe envs, implement here
         else:
+            lift_mask = (self.progress_buf >= 0)
             if actions is not None:
-                self.target = actions.clone()
+                self.target[lift_mask] = actions[lift_mask].clone()
             self.global_z_sensor_read = self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.global_forces_idx, 2].sum(dim=1).clone()
 
         
