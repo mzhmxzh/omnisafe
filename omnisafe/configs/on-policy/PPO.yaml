@@ -57,9 +57,9 @@ defaults:
     # critic norm coefficient
     critic_norm_coef: 0.001
     # reward discount factor
-    gamma: 0.99
+    gamma: 0.96
     # cost discount factor
-    cost_gamma: 0.99
+    cost_gamma: 0.96
     # lambda for gae
     lam: 0.95
     # lambda for cost gae

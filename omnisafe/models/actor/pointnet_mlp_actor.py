@@ -17,6 +17,7 @@
 from __future__ import annotations
 import sys
 
+sys.path.append('/home/liuhaoran/code/omnisafe/omnisafe/envs/')
 sys.path.append('/home/jialiangzhang/Workspace/omnisafe/omnisafe/envs/')
 sys.path.append('/mnt/disk0/danshili/Workspace/omnisafe/omnisafe/envs/')
 
