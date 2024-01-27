@@ -549,15 +549,15 @@ class PolicyGradient(BaseAlgo):
         loss_pi = self._loss_pi(obs, act, logp, adv)
         loss_v = nn.functional.mse_loss(self._actor_critic.reward_critic(self._actor_critic.actor._obs_feature), target_value_r)
         loss = loss_pi + 2 * loss_v
-        self._actor_critic.actor_critic_optimizer.zero_grad()
-        loss.backward()
-        if self._cfgs.algo_cfgs.use_max_grad_norm:
-            clip_grad_norm_(
-                self._actor_critic.parameters(),
-                self._cfgs.algo_cfgs.max_grad_norm,
-            )
-        distributed.avg_grads(self._actor_critic)
         if self._cfgs.train_cfgs.train:
+            self._actor_critic.actor_critic_optimizer.zero_grad()
+            loss.backward()
+            if self._cfgs.algo_cfgs.use_max_grad_norm:
+                clip_grad_norm_(
+                    self._actor_critic.parameters(),
+                    self._cfgs.algo_cfgs.max_grad_norm,
+                )
+            distributed.avg_grads(self._actor_critic)
             self._actor_critic.actor_critic_optimizer.step()
         
         self._logger.store({'Loss/Loss_reward_critic': loss_v.mean().item()})
