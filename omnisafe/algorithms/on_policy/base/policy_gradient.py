@@ -377,12 +377,13 @@ class PolicyGradient(BaseAlgo):
                     for param_group in self._actor_critic.cost_critic_optimizer.param_groups:
                         param_group['lr'] = self._step_size
                 # update params
-                self._update_actor(obs, act, logp, adv_r, adv_c)
-                critic_obs_feature = self._actor_critic.actor.get_obs_feature(obs)
-                self._update_reward_critic(critic_obs_feature, target_value_r)
-                if self._cfgs.algo_cfgs.use_cost:
-                    cost_obs_feature = self._actor_critic.actor.get_obs_feature(obs)
-                    self._update_cost_critic(cost_obs_feature, target_value_c)
+                self._update_actor_critic(obs, act, logp, adv_r, adv_c, target_value_r, target_value_c)
+                # self._update_actor(obs, act, logp, adv_r, adv_c)
+                # critic_obs_feature = self._actor_critic.actor.get_obs_feature(obs)
+                # self._update_reward_critic(critic_obs_feature, target_value_r)
+                # if self._cfgs.algo_cfgs.use_cost:
+                #     cost_obs_feature = self._actor_critic.actor.get_obs_feature(obs)
+                #     self._update_cost_critic(cost_obs_feature, target_value_c)
                 # update lr
                 new_distribution = self._actor_critic.actor(original_obs)
                 kl = (
@@ -541,6 +542,33 @@ class PolicyGradient(BaseAlgo):
             )
         distributed.avg_grads(self._actor_critic.actor)
         self._actor_critic.actor_optimizer.step()
+    
+    def _update_actor_critic(
+        self,
+        obs: torch.Tensor,
+        act: torch.Tensor,
+        logp: torch.Tensor,
+        adv_r: torch.Tensor,
+        adv_c: torch.Tensor,
+        target_value_r: torch.Tensor,
+        target_value_c: torch.Tensor,
+    ) -> None:
+        adv = self._compute_adv_surrogate(adv_r, adv_c)
+        loss_pi = self._loss_pi(obs, act, logp, adv)
+        loss_v = nn.functional.mse_loss(self._actor_critic.reward_critic(self._actor_critic.actor._obs_feature)[0], target_value_r)
+        loss = loss_pi + 2 * loss_v
+        self._actor_critic.actor_critic_optimizer.zero_grad()
+        loss.backward()
+        if self._cfgs.algo_cfgs.use_max_grad_norm:
+            clip_grad_norm_(
+                self._actor_critic.parameters(),
+                self._cfgs.algo_cfgs.max_grad_norm,
+            )
+        distributed.avg_grads(self._actor_critic)
+        self._actor_critic.actor_critic_optimizer.step()
+        
+        self._logger.store({'Loss/Loss_reward_critic': loss_v.mean().item()})
+        
 
     def _compute_adv_surrogate(  # pylint: disable=unused-argument
         self,
