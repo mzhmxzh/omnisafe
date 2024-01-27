@@ -20,6 +20,11 @@ from omnisafe.models.base import Critic
 from omnisafe.models.critic.q_critic import QCritic
 from omnisafe.models.critic.v_critic import VCritic
 from omnisafe.typing import Activation, CriticType, InitFunction, OmnisafeSpace
+from networks.mlp import MLP
+from utils.config import load_config, DotDict
+import numpy as np
+import torch
+import torch.nn as nn
 
 
 # pylint: disable-next=too-few-public-methods
@@ -102,6 +107,24 @@ class CriticBuilder:
                 weight_initialization_mode=self._weight_initialization_mode,
                 num_critics=self._num_critics,
             )
+        if critic_type == 'mlp':
+            config = load_config('config/rl.yaml', DotDict()).actor
+            critic =  MLP(input_dim=128, **config.critic_parameters)
+            def init_weights(sequential, scales, act):
+                if act in ['elu', 'tanh']:
+                    [torch.nn.init.orthogonal_(module.weight, gain=scales[idx]) for idx, module in
+                    enumerate(mod for mod in sequential if isinstance(mod, nn.Linear))]
+            critic_weights = [np.sqrt(2)] * 3
+            critic_weights.append(1.0)
+            init_weights(critic.mlp, critic_weights, config.critic_parameters.act)
+            class Squeeze(nn.Module):
+                def __init__(self, dim):
+                    super().__init__()
+                    self.dim = dim
+                def forward(self, x):
+                    if len(x.shape) == 2:
+                        return x.squeeze(self.dim)
+            return nn.Sequential(critic, Squeeze(1))
 
         raise NotImplementedError(
             f'critic_type "{critic_type}" is not implemented.'

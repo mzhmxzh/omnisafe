@@ -72,7 +72,7 @@ class ConstraintActorCritic(ActorCritic):
             weight_initialization_mode=model_cfgs.weight_initialization_mode,
             num_critics=1,
             use_obs_encoder=False,
-        ).build_critic('v')
+        ).build_critic('mlp')
         self.add_module('cost_critic', self.cost_critic)
         
         self.actor_critic_optimizer: optim.Optimizer = optim.Adam(self.parameters(), lr=model_cfgs.actor.lr)
@@ -113,7 +113,7 @@ class ConstraintActorCritic(ActorCritic):
                 value_r = self.reward_critic(self.actor._obs_feature)
                 value_c = self.cost_critic(self.actor._obs_feature)
 
-        return action, value_r[0], value_c[0], log_prob
+        return action, value_r, value_c, log_prob
 
     def forward(
         self,
