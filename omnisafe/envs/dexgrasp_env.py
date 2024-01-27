@@ -87,19 +87,10 @@ class SafetyDexgraspEnv(CMDP):
         # TODO: calculate cost
         cost = current_state['cost']
         
-        info = dict(
-            success=self._env.record_success, 
-            obj_dis_reward=current_state['obj_dis_reward'],
-            reach_reward=current_state['reach_reward'],
-            action_pen=current_state['action_pen'],
-            contact_reward=current_state['contact_reward'],
-            lift_reward=current_state['lift_reward'],
-            real_obj_height=current_state['real_obj_height'],
-            tpen=current_state['tpen'],
-            reward=current_state['reward'], 
-        )
+        current_state['success'] = self._env.record_success
+        current_state['net_input'] = net_input
         
-        return net_input, current_state['reward'], cost, terminated, truncated, info
+        return net_input, current_state['reward'], cost, terminated, truncated, current_state
     
     def reset(
         self,
@@ -109,9 +100,10 @@ class SafetyDexgraspEnv(CMDP):
         self._env.reset()
         current_state = self._env.get_state()
         net_input = self._obs_wrapper.query(current_state)
-        return net_input, dict()
+        return net_input, current_state
     
     def set_seed(self, seed):
+        return
         self.reset(seed=seed)
     
     def sample_action(self):

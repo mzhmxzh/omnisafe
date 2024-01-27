@@ -212,8 +212,8 @@ class Wrapper(CMDP):
         Returns:
             The attribute.
         """
-        if name.startswith('_'):
-            raise AttributeError(f'attempted to get missing private attribute {name}')
+        # if name.startswith('_'):
+        #     raise AttributeError(f'attempted to get missing private attribute {name}')
         return getattr(self._env, name)
 
     def step(

@@ -77,12 +77,15 @@ class OnPolicyAdapter(OnlineAdapter):
         """
         self._reset_log()
 
-        obs, _ = self.reset()
+        # obs, info = self.reset()
+        info = self._env.__getattr__('_env')._env.get_state()
+        obs = self._env.__getattr__('_env')._obs_wrapper.query(info)
         for step in track(
             range(steps_per_epoch),
             description=f'Processing rollout for epoch: {logger.current_epoch}...',
         ):
             act, value_r, value_c, logp = agent.step(obs)
+            available = info['available']
             next_obs, reward, cost, terminated, truncated, info = self.step(act)
 
             self._log_value(reward=reward, cost=cost, info=info)
@@ -94,15 +97,22 @@ class OnPolicyAdapter(OnlineAdapter):
             for key in ['obj_dis_reward', 'reach_reward', 'action_pen', 'contact_reward', 'lift_reward', 'real_obj_height', 'tpen', 'reward']:
                 logger.store({'Rewards/' + key: info[key]})
 
-            buffer.store(
-                obs=obs,
-                act=act,
-                reward=reward,
-                cost=cost,
+            # buffer.store(
+            #     obs=obs,
+            #     act=act,
+            #     reward=reward,
+            #     cost=cost,
+            #     value_r=value_r,
+            #     value_c=value_c,
+            #     logp=logp,
+            # )
+            net_output = dict(
+                action=act,
                 value_r=value_r,
                 value_c=value_c,
                 logp=logp,
             )
+            buffer.update(dict(net_input=obs, available=available), net_output, reward)
 
             obs = next_obs
             epoch_end = step >= steps_per_epoch - 1
@@ -136,7 +146,10 @@ class OnPolicyAdapter(OnlineAdapter):
                         self._ep_cost[idx] = 0.0
                         self._ep_len[idx] = 0.0
 
-                    buffer.finish_path(last_value_r, last_value_c, idx)
+                    # buffer.finish_path(last_value_r, last_value_c, idx)
+        
+        act, value_r, value_c, logp = agent.step(obs)
+        buffer.compute_returns(value_r, self._cfgs.algo_cfgs.gamma, self._cfgs.algo_cfgs.lam)
 
     def _log_value(
         self,

@@ -33,6 +33,7 @@ from omnisafe.common.logger import Logger
 from omnisafe.models.actor_critic.constraint_actor_critic import ConstraintActorCritic
 from omnisafe.utils import distributed
 from utils.config import load_config, DotDict
+from utils.replay_buffer import ReplayBuffer
 
 
 @registry.register
@@ -117,20 +118,30 @@ class PolicyGradient(BaseAlgo):
             ...     self._buffer = CustomBuffer()
             ...     self._model = CustomModel()
         """
-        self._buf: VectorOnPolicyBuffer = VectorOnPolicyBuffer(
-            obs_space=self._env.observation_space,
-            act_space=self._env.action_space,
-            size=self._steps_per_epoch,
-            gamma=self._cfgs.algo_cfgs.gamma,
-            lam=self._cfgs.algo_cfgs.lam,
-            lam_c=self._cfgs.algo_cfgs.lam_c,
-            advantage_estimator=self._cfgs.algo_cfgs.adv_estimation_method,
-            standardized_adv_r=self._cfgs.algo_cfgs.standardized_rew_adv,
-            standardized_adv_c=self._cfgs.algo_cfgs.standardized_cost_adv,
-            penalty_coefficient=self._cfgs.algo_cfgs.penalty_coef,
-            num_envs=self._cfgs.train_cfgs.vector_env_nums,
-            device=self._device,
+        # self._buf: VectorOnPolicyBuffer = VectorOnPolicyBuffer(
+        #     obs_space=self._env.observation_space,
+        #     act_space=self._env.action_space,
+        #     size=self._steps_per_epoch,
+        #     gamma=self._cfgs.algo_cfgs.gamma,
+        #     lam=self._cfgs.algo_cfgs.lam,
+        #     lam_c=self._cfgs.algo_cfgs.lam_c,
+        #     advantage_estimator=self._cfgs.algo_cfgs.adv_estimation_method,
+        #     standardized_adv_r=self._cfgs.algo_cfgs.standardized_rew_adv,
+        #     standardized_adv_c=self._cfgs.algo_cfgs.standardized_cost_adv,
+        #     penalty_coefficient=self._cfgs.algo_cfgs.penalty_coef,
+        #     num_envs=self._cfgs.train_cfgs.vector_env_nums,
+        #     device=self._device,
+        # )
+        current_state = self._env._env.__getattr__('_env')._env.get_state()
+        net_input = self._env._env.__getattr__('_env')._obs_wrapper.query(current_state)
+        action, value_r, value_c, logp = self._actor_critic.step(net_input)
+        net_output = dict(
+            action=action,
+            value_r=value_r,
+            value_c=value_c,
+            logp=logp,
         )
+        self._buf = ReplayBuffer(self._env._env._config, dict(net_input=net_input), net_output)
 
     def _init_log(self) -> None:
         """Log info about epoch.
@@ -252,6 +263,8 @@ class PolicyGradient(BaseAlgo):
         self._logger.log('INFO: Start training')
         
         self._step_size = self._cfgs.model_cfgs.actor.lr
+        
+        args = self._env._env._config
 
         for epoch in range(self._cfgs.train_cfgs.epochs):
             epoch_time = time.time()
@@ -264,6 +277,9 @@ class PolicyGradient(BaseAlgo):
                 logger=self._logger,
             )
             self._logger.store({'Time/Rollout': time.time() - rollout_time})
+            
+            if epoch < (args.init_timesteps + args.act_timesteps) / args.inner_iters + 1:
+                continue
 
             update_time = time.time()
             self._update()
@@ -336,39 +352,19 @@ class PolicyGradient(BaseAlgo):
         #. Repeat steps 2, 3 until the number of mini-batch data is used up.
         #. Repeat steps 2, 3, 4 until the KL divergence violates the limit.
         """
-        data = self._buf.get()
-        obs, act, logp, target_value_r, target_value_c, adv_r, adv_c = (
-            data['obs'],
-            data['act'],
-            data['logp'],
-            data['target_value_r'],
-            data['target_value_c'],
-            data['adv_r'],
-            data['adv_c'],
-        )
-
-        original_obs = obs
-        old_distribution = self._actor_critic.actor(obs)
-
-        dataloader = DataLoader(
-            dataset=TensorDataset(obs, act, logp, target_value_r, target_value_c, adv_r, adv_c),
-            batch_size=self._cfgs.algo_cfgs.batch_size,
-            shuffle=True,
-        )
-
+        
+        args = self._env._env._config
+        
+        with torch.no_grad():
+            old_distribution = self._actor_critic.actor(self._buf.get_all(shuffle=False)['net_input'])
+        
         update_counts = 0
         final_kl = 0.0
-
-        for i in track(range(self._cfgs.algo_cfgs.update_iters), description='Updating...'):
-            for (
-                obs,
-                act,
-                logp,
-                target_value_r,
-                target_value_c,
-                adv_r,
-                adv_c,
-            ) in dataloader:
+        
+        for epoch in range(args.ppo_epochs):
+            for batch in self._buf.get_batches(args.batch_size):
+                for param_group in self._actor_critic.actor_critic_optimizer.param_groups:
+                    param_group['lr'] = self._step_size
                 for param_group in self._actor_critic.actor_optimizer.param_groups:
                     param_group['lr'] = self._step_size
                 for param_group in self._actor_critic.reward_critic_optimizer.param_groups:
@@ -376,45 +372,32 @@ class PolicyGradient(BaseAlgo):
                 if self._cfgs.algo_cfgs.use_cost:
                     for param_group in self._actor_critic.cost_critic_optimizer.param_groups:
                         param_group['lr'] = self._step_size
-                # update params
+                obs = batch['net_input']
+                act = batch['action']
+                logp = batch['logp']
+                adv_r = batch['advantage']
+                adv_c = torch.zeros_like(adv_r)
+                target_value_r = batch['return']
+                target_value_c = torch.zeros_like(target_value_r)
                 self._update_actor_critic(obs, act, logp, adv_r, adv_c, target_value_r, target_value_c)
-                # self._update_actor(obs, act, logp, adv_r, adv_c)
-                # critic_obs_feature = self._actor_critic.actor.get_obs_feature(obs)
-                # self._update_reward_critic(critic_obs_feature, target_value_r)
-                # if self._cfgs.algo_cfgs.use_cost:
-                #     cost_obs_feature = self._actor_critic.actor.get_obs_feature(obs)
-                #     self._update_cost_critic(cost_obs_feature, target_value_c)
-                # update lr
-                new_distribution = self._actor_critic.actor(original_obs)
-                kl = (
-                    torch.distributions.kl.kl_divergence(old_distribution, new_distribution)
-                    .sum(-1, keepdim=True)
-                    .mean()
-                )
-                kl = distributed.dist_avg(kl)
-                if kl.item() > self._cfgs.algo_cfgs.target_kl * 2.0:
+                
+                with torch.no_grad():
+                    new_distribution = self._actor_critic.actor(self._buf.get_all(shuffle=False)['net_input'])
+                    kl_mean = (
+                        torch.distributions.kl.kl_divergence(old_distribution, new_distribution)
+                        .sum(-1, keepdim=True)
+                        .mean()
+                    )
+                    kl_mean = distributed.dist_avg(kl_mean)
+                
+
+                if kl_mean > args.desired_kl * 2.0:
                     self._step_size = max(1e-5, self._step_size / 1.5)
-                elif kl.item() < self._cfgs.algo_cfgs.target_kl / 2.0 and kl.item() > 0.0:
+                elif kl_mean < args.desired_kl / 2.0 and kl_mean > 0.0:
                     self._step_size = min(1e-2, self._step_size * 1.5)
-                # early stop
-                # if kl.item() > self._cfgs.algo_cfgs.target_kl * 2.0:
-                #     break
-
-            new_distribution = self._actor_critic.actor(original_obs)
-
-            kl = (
-                torch.distributions.kl.kl_divergence(old_distribution, new_distribution)
-                .sum(-1, keepdim=True)
-                .mean()
-            )
-            kl = distributed.dist_avg(kl)
-
-            final_kl = kl.item()
+            
+            final_kl = kl_mean.item()
             update_counts += 1
-
-            if self._cfgs.algo_cfgs.kl_early_stop and kl.item() > self._cfgs.algo_cfgs.target_kl * 2.0:
-                self._logger.log(f'Early stopping at iter {i + 1} due to reaching max kl')
-                break
 
         self._logger.store(
             {
