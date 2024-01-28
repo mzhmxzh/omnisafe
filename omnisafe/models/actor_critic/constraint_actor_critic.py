@@ -85,14 +85,14 @@ class ConstraintActorCritic(ActorCritic):
             self.actor.load_state_dict(actor_state_dict)
             self.reward_critic[0].load_state_dict(critic_state_dict)
         
-        self.actor_critic_optimizer: optim.Optimizer = optim.Adam(self.parameters(), lr=model_cfgs.actor.lr)
+        # self.actor_critic_optimizer: optim.Optimizer = optim.Adam(self.parameters(), lr=model_cfgs.actor.lr)
 
-        if model_cfgs.critic.lr is not None:
-            self.cost_critic_optimizer: optim.Optimizer
-            self.cost_critic_optimizer = optim.Adam(
-                self.cost_critic.parameters(),
-                lr=model_cfgs.critic.lr,
-            )
+        # if model_cfgs.critic.lr is not None:
+        #     self.cost_critic_optimizer: optim.Optimizer
+        #     self.cost_critic_optimizer = optim.Adam(
+        #         self.cost_critic.parameters(),
+        #         lr=model_cfgs.critic.lr,
+        #     )
 
     def step(
         self,
@@ -117,11 +117,15 @@ class ConstraintActorCritic(ActorCritic):
             log_prob = self.actor.log_prob(action)
             
             if len(obs.shape) == 1:
-                value_r = self.reward_critic(self.actor._obs_feature.squeeze(0))
-                value_c = self.cost_critic(self.actor._obs_feature.squeeze(0))
+                obs_feature = self.actor.get_obs_feature(obs.unsqueeze(0))
+                value_r = self.reward_critic(obs_feature.squeeze(0))
+                obs_feature = self.actor.get_obs_feature(obs.unsqueeze(0))
+                value_c = self.cost_critic(obs_feature.squeeze(0))
             else:
-                value_r = self.reward_critic(self.actor._obs_feature)
-                value_c = self.cost_critic(self.actor._obs_feature)
+                obs_feature = self.actor.get_obs_feature(obs)
+                value_r = self.reward_critic(obs_feature)
+                obs_feature = self.actor.get_obs_feature(obs)
+                value_c = self.cost_critic(obs_feature)
 
         return action, value_r, value_c, log_prob
 

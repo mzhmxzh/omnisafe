@@ -110,6 +110,9 @@ class PointnetMLPActor(GaussianActor):
         actor_weights.append(0.01)
         init_weights(self.policy.policy.mlp, actor_weights)
     
+    def train_parameters(self):
+        return list(self.policy.parameters()) + list(self.feature_extractor.parameters())
+    
     def get_obs_feature(self, obs):
         robot_state_stacked = obs[:, :25].reshape(len(obs), 1, 25)
         visual_observation = obs[:, 25:].reshape(len(obs), -1, 3)

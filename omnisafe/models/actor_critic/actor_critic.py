@@ -89,33 +89,33 @@ class ActorCritic(nn.Module):
         self.add_module('actor', self.actor)
         self.add_module('reward_critic', self.reward_critic)
         
-        self.actor_critic_optimizer = optim.Adam(self.parameters(), lr=model_cfgs.actor.lr)
+        self.actor_critic_optimizer = optim.Adam([dict(params=self.actor.train_parameters() + list(self.reward_critic.parameters()), initial_lr=model_cfgs.actor.lr)], lr=model_cfgs.actor.lr)
 
-        if model_cfgs.actor.lr is not None:
-            self.actor_optimizer: optim.Optimizer
-            self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=model_cfgs.actor.lr)
-        if model_cfgs.critic.lr is not None:
-            self.reward_critic_optimizer: optim.Optimizer = optim.Adam(
-                self.reward_critic.parameters(),
-                lr=model_cfgs.critic.lr,
-            )
-        if model_cfgs.actor.lr is not None:
-            self.actor_scheduler: LinearLR | ConstantLR
-            if model_cfgs.linear_lr_decay:
-                self.actor_scheduler = LinearLR(
-                    self.actor_optimizer,
-                    start_factor=1.0,
-                    end_factor=0.0,
-                    total_iters=epochs,
-                    verbose=True,
-                )
-            else:
-                self.actor_scheduler = ConstantLR(
-                    self.actor_optimizer,
-                    factor=1.0,
-                    total_iters=epochs,
-                    verbose=True,
-                )
+        # if model_cfgs.actor.lr is not None:
+        #     self.actor_optimizer: optim.Optimizer
+        #     self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=model_cfgs.actor.lr)
+        # if model_cfgs.critic.lr is not None:
+        #     self.reward_critic_optimizer: optim.Optimizer = optim.Adam(
+        #         self.reward_critic.parameters(),
+        #         lr=model_cfgs.critic.lr,
+        #     )
+        # if model_cfgs.actor.lr is not None:
+        #     self.actor_scheduler: LinearLR | ConstantLR
+        #     if model_cfgs.linear_lr_decay:
+        #         self.actor_scheduler = LinearLR(
+        #             self.actor_optimizer,
+        #             start_factor=1.0,
+        #             end_factor=0.0,
+        #             total_iters=epochs,
+        #             verbose=True,
+        #         )
+        #     else:
+        #         self.actor_scheduler = ConstantLR(
+        #             self.actor_optimizer,
+        #             factor=1.0,
+        #             total_iters=epochs,
+        #             verbose=True,
+        #         )
 
     def step(
         self,

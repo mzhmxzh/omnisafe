@@ -27,7 +27,7 @@ class ReplayBuffer():
         self.storage['reward'] = torch.zeros((self.inner_iters * self.scale, self.num_envs), device=self.device)
         self.storage['return'] = torch.zeros((self.inner_iters * self.scale, self.num_envs), device=self.device)
         self.storage['advantage'] = torch.zeros((self.inner_iters * self.scale, self.num_envs), device=self.device)
-        self.storage['available'] = torch.zeros((self.inner_iters * self.scale, self.num_envs), device=self.device)
+        self.storage['available'] = torch.zeros((self.inner_iters * self.scale, self.num_envs), device=self.device, dtype=torch.bool)
         self.step = 0
     
     def update(self, current_state, output, reward):
@@ -56,6 +56,7 @@ class ReplayBuffer():
                     next_values = last_values
                 else:
                     next_values = self.storage['value_r'][(idx+1) % (2*self.inner_iters)]
+
                 delta = self.storage['reward'][idx] + gamma * next_values - self.storage['value_r'][idx]
                 advantage = delta + gamma * lam * advantage
             self.storage['advantage'][j%(2*self.inner_iters)] = advantage 

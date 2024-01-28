@@ -78,14 +78,14 @@ class OnPolicyAdapter(OnlineAdapter):
         self._reset_log()
 
         # obs, info = self.reset()
-        info = self._env.__getattr__('_env')._env.get_state()
-        obs = self._env.__getattr__('_env')._obs_wrapper.query(info)
+        current_state = self._env.__getattr__('_env')._env.get_state()
+        obs = self._env.__getattr__('_env')._obs_wrapper.query(current_state)
         for step in track(
             range(steps_per_epoch),
             description=f'Processing rollout for epoch: {logger.current_epoch}...',
         ):
             act, value_r, value_c, logp = agent.step(obs)
-            available = info['available']
+            available = current_state['available'].clone()
             next_obs, reward, cost, terminated, truncated, info = self.step(act)
 
             self._log_value(reward=reward, cost=cost, info=info)
@@ -112,11 +112,12 @@ class OnPolicyAdapter(OnlineAdapter):
                 value_c=value_c.clone(),
                 logp=logp.clone(),
             )
+            current_state = self._env.__getattr__('_env')._env.get_state()
             # # sanity check
             # agent.actor(obs)
             # new_logp = agent.actor.log_prob(act)
             # assert torch.allclose(logp, new_logp), 'logp is not equal to new_logp'
-            buffer.update(dict(net_input=obs.clone(), available=available.clone()), net_output, reward)
+            buffer.update(dict(net_input=obs.clone(), available=available.clone()), net_output, current_state['reward'])
             
             # # sanity check
             # for j in range(step + 1):
@@ -130,7 +131,8 @@ class OnPolicyAdapter(OnlineAdapter):
             # if not torch.allclose(buffer.storage['logp'][buffer_step:buffer_step + step + 1].reshape(-1, *buffer.storage['logp'].shape[2:]), new_logp):
             #     print('logp is not equal to new_logp')
 
-            obs = next_obs
+            # obs = next_obs
+            obs = self._env.__getattr__('_env')._obs_wrapper.query(current_state)
             epoch_end = step >= steps_per_epoch - 1
             for idx, (done, time_out) in enumerate(zip(terminated, truncated)):
                 if epoch_end or done or time_out:

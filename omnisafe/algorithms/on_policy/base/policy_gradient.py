@@ -278,14 +278,21 @@ class PolicyGradient(BaseAlgo):
         for epoch in range(self._cfgs.train_cfgs.epochs):
             epoch_time = time.time()
 
-            rollout_time = time.time()
-            self._env.rollout(
-                steps_per_epoch=self._steps_per_epoch,
-                agent=self._actor_critic,
-                buffer=self._buf,
-                logger=self._logger,
-            )
-            self._logger.store({'Time/Rollout': time.time() - rollout_time})
+            with torch.no_grad():
+                rollout_time = time.time()
+                self._env.rollout(
+                    steps_per_epoch=self._steps_per_epoch,
+                    agent=self._actor_critic,
+                    buffer=self._buf,
+                    logger=self._logger,
+                )
+                self._logger.store({'Time/Rollout': time.time() - rollout_time})
+            
+            print('available', self._buf.storage['available'][self._buf.step:self._buf.step+self._buf.inner_iters, 0])
+            print('reward', self._buf.storage['reward'][self._buf.step:self._buf.step+self._buf.inner_iters, 0])
+            print('value_r', self._buf.storage['value_r'][self._buf.step:self._buf.step+self._buf.inner_iters, 0])
+            print('return', self._buf.storage['return'][self._buf.step:self._buf.step+self._buf.inner_iters, 0])
+            print('advantage', self._buf.storage['advantage'][self._buf.step:self._buf.step+self._buf.inner_iters, 0])
             
             if epoch < (args.init_timesteps + args.act_timesteps) / args.inner_iters + 1:
                 continue
@@ -297,8 +304,8 @@ class PolicyGradient(BaseAlgo):
             if self._cfgs.model_cfgs.exploration_noise_anneal:
                 self._actor_critic.annealing(epoch)
 
-            if self._cfgs.model_cfgs.actor.lr is not None:
-                self._actor_critic.actor_scheduler.step()
+            # if self._cfgs.model_cfgs.actor.lr is not None:
+            #     self._actor_critic.actor_scheduler.step()
 
             self._logger.store(
                 {
@@ -374,13 +381,13 @@ class PolicyGradient(BaseAlgo):
             for batch in self._buf.get_batches(args.batch_size):
                 for param_group in self._actor_critic.actor_critic_optimizer.param_groups:
                     param_group['lr'] = self._step_size
-                for param_group in self._actor_critic.actor_optimizer.param_groups:
-                    param_group['lr'] = self._step_size
-                for param_group in self._actor_critic.reward_critic_optimizer.param_groups:
-                    param_group['lr'] = self._step_size
-                if self._cfgs.algo_cfgs.use_cost:
-                    for param_group in self._actor_critic.cost_critic_optimizer.param_groups:
-                        param_group['lr'] = self._step_size
+                # for param_group in self._actor_critic.actor_optimizer.param_groups:
+                #     param_group['lr'] = self._step_size
+                # for param_group in self._actor_critic.reward_critic_optimizer.param_groups:
+                #     param_group['lr'] = self._step_size
+                # if self._cfgs.algo_cfgs.use_cost:
+                #     for param_group in self._actor_critic.cost_critic_optimizer.param_groups:
+                #         param_group['lr'] = self._step_size
                 obs = batch['net_input']
                 act = batch['action']
                 logp = batch['logp']
@@ -400,10 +407,12 @@ class PolicyGradient(BaseAlgo):
                     # kl_mean = distributed.dist_avg(kl_mean)
                 
 
-                if kl_mean > args.desired_kl * 2.0:
-                    self._step_size = max(1e-5, self._step_size / 1.5)
-                elif kl_mean < args.desired_kl / 2.0 and kl_mean > 0.0:
-                    self._step_size = min(1e-2, self._step_size * 1.5)
+                # if kl_mean > args.desired_kl * 2.0:
+                #     self._step_size = max(1e-5, self._step_size / 1.5)
+                # elif kl_mean < args.desired_kl / 2.0 and kl_mean > 0.0:
+                #     self._step_size = min(1e-2, self._step_size * 1.5)
+                # if kl_mean > args.desired_kl:
+                #     break
             
             final_kl = kl_mean.item()
             update_counts += 1
@@ -533,7 +542,7 @@ class PolicyGradient(BaseAlgo):
                 self._cfgs.algo_cfgs.max_grad_norm,
             )
         distributed.avg_grads(self._actor_critic.actor)
-        self._actor_critic.actor_optimizer.step()
+        # self._actor_critic.actor_optimizer.step()
     
     def _update_actor_critic(
         self,
@@ -547,7 +556,9 @@ class PolicyGradient(BaseAlgo):
     ) -> None:
         adv = self._compute_adv_surrogate(adv_r, adv_c)
         loss_pi = self._loss_pi(obs, act, logp, adv)
-        loss_v = nn.functional.mse_loss(self._actor_critic.reward_critic(self._actor_critic.actor._obs_feature), target_value_r)
+        obs_feature = self._actor_critic.actor.get_obs_feature(obs)
+        predicted_value_r = self._actor_critic.reward_critic(obs_feature)
+        loss_v = nn.functional.mse_loss(predicted_value_r, target_value_r)
         loss = loss_pi + 2 * loss_v
         assert not torch.isnan(loss).any(), 'loss is nan'
         if self._cfgs.train_cfgs.train:

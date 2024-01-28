@@ -1,6 +1,6 @@
 exp_name: temp
-model_path: experiments/ppo/v8.0_table/checkpoints/iter_31k.pt
-gpu: 1
+model_path: experiments/ppo/exp_tmp_car4/checkpoints/iter_3k.pt
+gpu: 4
 seed: 1812
 num_frames: 1
 use_loss_tpen: False
@@ -31,7 +31,7 @@ d: 15
 
 with_safety_wrapper: 0
 
-num_envs: 100
+num_envs: 1000
 num_obj_per_env: 1
 
 actor:
@@ -78,7 +78,7 @@ trans_reward_weight: 10.0
 rot_reward_weight: 1.0
 qpos_reward_weight: 0.5
 
-reward_type: staged2_lhr
+reward_type: staged2
 
 wrapper_object: True
 wrapper_finger: False

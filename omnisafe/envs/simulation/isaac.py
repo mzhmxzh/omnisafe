@@ -460,7 +460,7 @@ class Env():
             assert len(actions) == len(lift_idx), len(actions)
             actions, unsafe, bias = self.wrapper.direct(actions)
             self.unsafe_table[lift_idx] = unsafe.float()
-            return actions, unsafe.float(), bias
+            return actions, unsafe.bool(), bias
         else:
             assert len(actions) == len(lift_idx), len(actions)
             actions, unsafe_object = self.wrapper.direct_object(self, actions, lift_idx)
@@ -495,8 +495,8 @@ class Env():
             # proportional to mass
             rb_force_scale = rb_force_scale.unsqueeze(-1)
             self.rb_forces[force_indices, self.robot_rb_count:, :] = rb_force_dir * self.obj_original_masses[force_indices].reshape(rb_force_shape[0],-1,1) * (self.config.force_scale)
-            self.gym.apply_rigid_body_force_tensors(self.sim, gymtorch.unwrap_tensor(self.rb_forces), None,
-                                                    gymapi.LOCAL_SPACE)
+            # self.gym.apply_rigid_body_force_tensors(self.sim, gymtorch.unwrap_tensor(self.rb_forces), None,
+            #                                         gymapi.LOCAL_SPACE)  # TODO
 
         if self.config.with_safety_wrapper:
             self.clone_backup_states()
@@ -555,8 +555,9 @@ class Env():
             # if ad-hoc lifting is needed for unsafe envs, implement here
         else:
             lift_mask = (self.progress_buf >= 0)
+            lift_idx = torch.arange(0, self.num_envs, device=self.device, dtype=torch.long)[lift_mask]
             if actions is not None:
-                self.target[lift_mask] = actions[lift_mask].clone()
+                self.target[lift_idx], self.rollback_buf[lift_idx], self.tpen[lift_idx] = self.safety_wrapper(actions[lift_idx].clone(),lift_idx,pseudo=True)
             self.global_z_sensor_read = self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.global_forces_idx, 2].sum(dim=1).clone()
 
         
