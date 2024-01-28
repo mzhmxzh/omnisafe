@@ -100,7 +100,8 @@ class Logger:  # pylint: disable=too-many-instance-attributes
 
         self._hms_time: str = hms_time
         self._log_dir: str = os.path.join(output_dir, exp_name, relpath)
-        self._maste_proc: bool = get_rank() == 0
+        # self._maste_proc: bool = get_rank() == 0
+        self._maste_proc: bool = True
         self._console: Console = Console()
 
         if self._maste_proc:

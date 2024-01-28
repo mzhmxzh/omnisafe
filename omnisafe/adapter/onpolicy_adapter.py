@@ -107,12 +107,28 @@ class OnPolicyAdapter(OnlineAdapter):
             #     logp=logp,
             # )
             net_output = dict(
-                action=act,
-                value_r=value_r,
-                value_c=value_c,
-                logp=logp,
+                action=act.clone(),
+                value_r=value_r.clone(),
+                value_c=value_c.clone(),
+                logp=logp.clone(),
             )
-            buffer.update(dict(net_input=obs, available=available), net_output, reward)
+            # # sanity check
+            # agent.actor(obs)
+            # new_logp = agent.actor.log_prob(act)
+            # assert torch.allclose(logp, new_logp), 'logp is not equal to new_logp'
+            buffer.update(dict(net_input=obs.clone(), available=available.clone()), net_output, reward)
+            
+            # # sanity check
+            # for j in range(step + 1):
+            #     buffer_step = (buffer.step + buffer.inner_iters * 2 - 1 - j) % (buffer.inner_iters * 2)
+            #     agent.actor(buffer.storage['net_input'][buffer_step])
+            #     new_logp = agent.actor.log_prob(buffer.storage['action'][buffer_step])
+            #     assert torch.allclose(buffer.storage['logp'][buffer_step], new_logp), 'logp is not equal to new_logp'
+            # buffer_step = (buffer.step + buffer.inner_iters * 2 - 1 - step) % (buffer.inner_iters * 2)
+            # agent.actor(buffer.storage['net_input'][buffer_step:buffer_step + step + 1].reshape(-1, *buffer.storage['net_input'].shape[2:]))
+            # new_logp = agent.actor.log_prob(buffer.storage['action'][buffer_step:buffer_step + step + 1].reshape(-1, *buffer.storage['action'].shape[2:]))
+            # if not torch.allclose(buffer.storage['logp'][buffer_step:buffer_step + step + 1].reshape(-1, *buffer.storage['logp'].shape[2:]), new_logp):
+            #     print('logp is not equal to new_logp')
 
             obs = next_obs
             epoch_end = step >= steps_per_epoch - 1

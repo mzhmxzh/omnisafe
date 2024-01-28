@@ -1,6 +1,6 @@
 control_hz: 10
 env_hz: 60
-use_viewer: 1
+use_viewer: 0
 use_camera: 0
 num_envs: 1
 num_obj_per_env: 1

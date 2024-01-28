@@ -1,6 +1,6 @@
 exp_name: temp
 model_path: experiments/ppo/v8.0_table/checkpoints/iter_31k.pt
-gpu: 0
+gpu: 1
 seed: 1812
 num_frames: 1
 use_loss_tpen: False
@@ -31,7 +31,7 @@ d: 15
 
 with_safety_wrapper: 0
 
-num_envs: 1000
+num_envs: 100
 num_obj_per_env: 1
 
 actor:

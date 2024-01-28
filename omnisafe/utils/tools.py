@@ -145,7 +145,7 @@ def seed_all(seed: int) -> None:
     Args:
         seed (int): The random seed.
     """
-    return
+    # return
     os.environ['PYTHONHASHSEED'] = str(seed)
 
     random.seed(seed)

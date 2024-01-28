@@ -507,9 +507,9 @@ class ActionScale(Wrapper):
             truncated: Whether the episode has been truncated due to a time limit.
             info: Some information logged by the environment.
         """
-        action = self._old_min_action + (self._old_max_action - self._old_min_action) * (
-            action - self._min_action
-        ) / (self._max_action - self._min_action)
+        # action = self._old_min_action + (self._old_max_action - self._old_min_action) * (
+        #     action - self._min_action
+        # ) / (self._max_action - self._min_action)
         return super().step(action)
 
 

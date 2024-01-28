@@ -56,28 +56,28 @@ if __name__ == '__main__':
     parser.add_argument(
         '--device',
         type=str,
-        default='cuda:0',
+        default='cuda:1',
         metavar='DEVICES',
         help='device to use for training',
     )
     parser.add_argument(
         '--vector-env-nums',
         type=int,
-        default=1000,
+        default=100,
         metavar='VECTOR-ENV',
         help='number of vector envs to use for training',
     )
     parser.add_argument(
         '--torch-threads',
         type=int,
-        default=16,
+        default=1,
         metavar='THREADS',
         help='number of threads to use for torch',
     )
     parser.add_argument(
         '--train',
         type=int,
-        default=0,
+        default=1,
         metavar='TRAIN',
         help='whether to perform gradient updates',
     )
