@@ -98,7 +98,7 @@ class SafetyWrapper():
         collision_vertices = self.robot_model.get_collision_vertices(self.link_names+["upper_arm_link"])
         torch_bias = torch.clamp(0.002+self.box_origin[-1]-self.box_extents[-1]-collision_vertices[..., 2].min(dim=1).values, min=0)
         if not execute:
-            return torch_bias > 0
+            return torch_bias > 0, torch_bias
         bias = torch_bias.cpu().numpy()
         old_arm_pose = actions[:, :6].cpu().numpy()
 

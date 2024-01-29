@@ -1,10 +1,11 @@
 exp_name: temp
 model_path: null
-gpu: 4
+gpu: 3
 seed: 1812
 num_frames: 1
 use_loss_tpen: False
 specify_obj: null
+# specify_obj: sem-Car-da496ba5f90a476a1493b1a3f79fe4c6_006
 w_tpen: 0.001
 dilation_tpen: 0.002
 inner_iters: 8

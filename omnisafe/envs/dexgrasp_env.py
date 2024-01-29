@@ -37,8 +37,6 @@ class SafetyDexgraspEnv(CMDP):
         self._config = DotDict(
             dict(
                 split_path='data/splits-v15/bc_dataset.json',
-                specify_obj='sem-Car-da496ba5f90a476a1493b1a3f79fe4c6_006',
-                # specify_obj=None,
                 simulate_mode='train',
                 obj_num=None,
             )
@@ -46,11 +44,7 @@ class SafetyDexgraspEnv(CMDP):
         if self._config.specify_obj is not None:
             self._config.object_code = [self._config.specify_obj]
         else:
-            with open(self._config.split_path, 'r') as json_file:
-                self._config.object_code = json.load(json_file)[self._config.simulate_mode]
-                self._config.object_code = [code for code in self._config.object_code if not 'ycb' in code and len(np.load(os.path.join('data', 'results_filtered-v15', code + '.npy'), allow_pickle=True))]
-            if self._config.obj_num is not None:
-                self._config.object_code = self._config.object_code[:self._config.obj_num]
+            self._config.object_code = np.load('data/splits-v15/object_code.npy').tolist()
         self._config = load_config('config/rl.yaml', self._config)
         self._config = load_config('config/isaac.yaml', self._config)
         

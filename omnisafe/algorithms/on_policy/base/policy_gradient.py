@@ -392,13 +392,16 @@ class PolicyGradient(BaseAlgo):
                 #     break
                 
                 value_loss = (batch['return'] - net_output['value']).square().mean()
+                if self._cfgs.algo_cfgs.use_cost:
+                    cost_loss = (batch['return_c'] - net_output['value_c']).square().mean()
                         
                 ratio = torch.exp(net_output['log_prob'] - batch['log_prob'])
                 # print('ratio', ratio.min(), ratio.max(), ratio.std(), ratio.mean())
-                surrogate = -torch.squeeze(batch['advantage']) * ratio
-                surrogate_clipped = -torch.squeeze(batch['advantage']) * torch.clamp(ratio, 1.0 - args.clip_param, 1.0 + args.clip_param)
+                advantage = self._compute_adv_surrogate(batch['advantage'], batch['advantage_c'])
+                surrogate = -torch.squeeze(advantage) * ratio
+                surrogate_clipped = -torch.squeeze(advantage) * torch.clamp(ratio, 1.0 - args.clip_param, 1.0 + args.clip_param)
                 surrogate_loss = torch.max(surrogate, surrogate_clipped).mean()
-                loss = surrogate_loss + args.value_loss_weight * value_loss
+                loss = surrogate_loss + args.value_loss_weight * value_loss + args.cost_loss_weight * (cost_loss if self._cfgs.algo_cfgs.use_cost else 0)
                 
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self._actor_critic.parameters(), args.max_grad_norm)
@@ -406,6 +409,8 @@ class PolicyGradient(BaseAlgo):
                 self._actor_critic.actor_critic_optimizer.zero_grad()
                 
                 self._logger.store({'Loss/Loss_reward_critic': value_loss.mean().item()})
+                if self._cfgs.algo_cfgs.use_cost:
+                    self._logger.store({'Loss/Loss_cost_critic': cost_loss.mean().item()})
                 self._logger.store(
                     {
                         'Train/Entropy': 0,
@@ -422,7 +427,7 @@ class PolicyGradient(BaseAlgo):
         self._logger.store(
             {
                 'Train/StopIter': update_counts,  # pylint: disable=undefined-loop-variable
-                'Value/Adv': batch['advantage'].mean().item(),
+                'Value/Adv': advantage.mean().item(),
                 'Train/KL': final_kl,
             },
         )
