@@ -341,8 +341,8 @@ class Env():
         self.gym.step_graphics(self.sim)
 
         self.controller = PIDController(0)
-        self.thr_z = self.config.get("wrapper_thr_x", 10.0)
-        self.thr_x = self.config.get("wrapper_thr_z", 10.0)
+        self.thr_x = self.config.get("wrapper_thr_x", 10.0)
+        self.thr_z = self.config.get("wrapper_thr_z", 10.0)
         self.thr_obj_force = self.config.get("force_z_noise", 10.0)
         self.sensor_force_thr = self.config.get('sensor_force_thr',10.0)
         self.sensor_torque_thr = self.config.get('sensor_torque_thr',10.0)

@@ -128,13 +128,17 @@ class SafetyWrapper():
 
         # lift hand with direct()
         # old_arm_pose = isaac.dof_state_tensor[:,:6, 0].clone().cpu().numpy()
-        old_arm_pose = actions[:, :6].cpu().numpy()
-        new_arm_pose = torch.tensor(old_arm_pose, dtype=actions.dtype, device=actions.device)
-        if len(unsafe_idx) > 0:
-            direct_return = self.pool.starmap(direct, [(self.obj_bias, old_arm_pose[i]) for i in unsafe_idx])
-            ik_return_pose = torch.tensor([r[0] for r in direct_return], dtype=actions.dtype, device=actions.device)
-            new_arm_pose[unsafe_idx] = ik_return_pose
-        return torch.cat([new_arm_pose, actions[:, 6:]], dim=-1), unsafe_mask
+        # old_arm_pose = actions[:, :6].cpu().numpy()
+        # new_arm_pose = torch.tensor(old_arm_pose, dtype=actions.dtype, device=actions.device)
+        # if len(unsafe_idx) > 0:
+        #     direct_return = self.pool.starmap(direct, [(self.obj_bias, old_arm_pose[i]) for i in unsafe_idx])
+        #     ik_return_pose = torch.tensor([r[0] for r in direct_return], dtype=actions.dtype, device=actions.device)
+        #     new_arm_pose[unsafe_idx] = ik_return_pose
+        # return torch.cat([new_arm_pose, actions[:, 6:]], dim=-1), unsafe_mask
+        current_pos = isaac.backup_dof_state_tensor.reshape(isaac.num_envs,-1,2)[unsafe_idx,:,0].clone()
+        actions[unsafe_idx,...] = current_pos
+        return actions, unsafe_mask
+
 
     def direct_fingers(self, isaac, actions, lift_idx, current_pos=None, thr_x=10.0, thr_z=10.0, execute=True):
         assert len(actions) == len(lift_idx), len(actions)
