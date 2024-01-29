@@ -277,6 +277,11 @@ class Env():
         self.unsafe_table = torch.zeros((self.num_envs,), device=self.device)
         self.unsafe_object = torch.zeros((self.num_envs,), device=self.device)
         self.unsafe_fingers = torch.zeros((self.num_envs,), device=self.device)
+        self.record_rollback_buf = torch.zeros((self.num_envs,), device=self.device)
+        self.record_unsafe_table = torch.zeros((self.num_envs,), device=self.device)
+        self.record_unsafe_object = torch.zeros((self.num_envs,), device=self.device)
+        self.record_unsafe_fingers = torch.zeros((self.num_envs,), device=self.device)
+        self.record_unsafe_all = torch.zeros((self.num_envs,), device=self.device)
         rigid_body_tensor = self.gym.acquire_rigid_body_state_tensor(self.sim)
         rigid_body_tensor = gymtorch.wrap_tensor(rigid_body_tensor).view(self.num_envs, -1, 13)
         self.rb_forces = torch.zeros((self.num_envs, rigid_body_tensor.shape[1], 3), dtype=torch.float, device=self.device)
@@ -362,6 +367,12 @@ class Env():
         if indices is None:
             indices = torch.arange(0, self.num_envs, device=self.device, dtype=torch.long)
         self.rb_forces[indices, :, :] = 0.0
+        self.record_unsafe_table[indices] = (self.record_unsafe_table[indices] > 1).float()
+        self.record_unsafe_object[indices] = (self.record_unsafe_object[indices] > 1).float()
+        self.record_unsafe_fingers[indices] = (self.record_unsafe_fingers[indices] > 1).float()
+        self.record_rollback_buf[indices] = (self.record_rollback_buf[indices] > 1).float()
+        self.record_unsafe_all[indices] = (self.record_unsafe_all[indices] > 1).float()
+
         self.record_success[indices] = self.check_success()[indices]
         self.record_angle[indices] = pttf.so3_rotation_angle(self.rel_goal_rot[indices], eps=1e-3)
         arange = torch.arange(0, len(indices), device=self.device, dtype=torch.long)
@@ -835,6 +846,18 @@ class Env():
         metrics["fingertip_force_mean_z"] = fforce_max_env[:,2]
         fforce_all = self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.fforces_idx, :3].max(dim=1)[0].norm(dim=-1)
         metrics["fforce_all"] = fforce_all
+
+        self.record_unsafe_table[metric_idx] = torch.logical_or(self.record_unsafe_table[metric_idx],self.unsafe_table[metric_idx])
+        self.record_unsafe_object[metric_idx] = torch.logical_or(self.record_unsafe_object[metric_idx],self.unsafe_object[metric_idx])
+        self.record_unsafe_fingers[metric_idx] = torch.logical_or(self.record_unsafe_fingers[metric_idx],self.unsafe_fingers[metric_idx])
+        self.record_rollback_buf[metric_idx] = torch.logical_or(self.record_rollback_buf[metric_idx],self.rollback_buf[metric_idx])
+        self.record_unsafe_all[metric_idx] = torch.logical_or(self.record_unsafe_all[metric_idx],unsafe_all[metric_idx])
+        metrics["record_unsafe_table"] = record_unsafe_table
+        metrics["record_unsafe_object"] = record_unsafe_object
+        metrics["record_unsafe_fingers"] = record_unsafe_fingers
+        metrics["record_rollback_buf"] = record_rollback_buf
+        metrics["record_unsafe_all"] = record_unsafe_all
+
  
         reward_detail_dict.update(metrics)
         return reward, reward_detail_dict
