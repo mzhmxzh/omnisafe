@@ -90,24 +90,26 @@ class SafetyWrapper():
         'wrist_1_link': 4, 'wrist_2_link': 5, 'wrist_3_link': 6}
         self.fingertip_rigid_bodies = [11,19,23,15]
         
-    def direct(self, actions):
+    def direct(self, actions,execute=True):
         # return actions
         origin_pose = torch.tensor([[0,0,0,1,0,0,0,1,0]], dtype=actions.dtype, device=actions.device).repeat(len(actions), 1)
         robot_pose = torch.cat([origin_pose, actions], dim=-1)
         self.robot_model.set_parameters(robot_pose)
         collision_vertices = self.robot_model.get_collision_vertices(self.link_names+["upper_arm_link"])
         torch_bias = torch.clamp(0.002+self.box_origin[-1]-self.box_extents[-1]-collision_vertices[..., 2].min(dim=1).values, min=0)
+        if not execute:
+            return torch_bias > 0
         bias = torch_bias.cpu().numpy()
         old_arm_pose = actions[:, :6].cpu().numpy()
 
         direct_return = self.pool.starmap(direct, [(bias[i], old_arm_pose[i]) for i in range(len(actions))])
         new_arm_pose = [r[0] for r in direct_return]
         unsafe = [r[1] for r in direct_return]
-        new_arm_pose = torch.tensor(new_arm_pose, dtype=actions.dtype, device=actions.device)
+        new_arm_pose = torch.tensor(np.array(new_arm_pose), dtype=actions.dtype, device=actions.device)
         unsafe = torch.tensor(unsafe, dtype=actions.dtype, device=actions.device).squeeze()
         return torch.cat([new_arm_pose, actions[:, 6:]], dim=-1), unsafe, torch_bias
 
-    def direct_object(self, isaac, actions, lift_idx):
+    def direct_object(self, isaac, actions, lift_idx, execute=True):
         assert len(actions) == len(lift_idx), len(actions)
         # read world-frame force sensor values
         # min_sensor_read = torch.minimum(min_sensor_read, self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.fforces_idx, :3].sum(dim=1).min(dim=0)[0])
@@ -120,6 +122,8 @@ class SafetyWrapper():
         # unsafe = total force z value > noise_thr = 5N
         unsafe_mask = (isaac.global_z_sensor_read > isaac.config.force_z_noise)[lift_idx]
         assert unsafe_mask.dim() == 1, unsafe_mask.shape
+        if not execute:
+            return unsafe_mask
         unsafe_idx = torch.arange(len(actions),device=actions.device)[unsafe_mask]
 
         # lift hand with direct()
@@ -132,13 +136,15 @@ class SafetyWrapper():
             new_arm_pose[unsafe_idx] = ik_return_pose
         return torch.cat([new_arm_pose, actions[:, 6:]], dim=-1), unsafe_mask
 
-    def direct_fingers(self, isaac, actions, lift_idx, current_pos=None, thr_x=10.0, thr_z=10.0):
+    def direct_fingers(self, isaac, actions, lift_idx, current_pos=None, thr_x=10.0, thr_z=10.0, execute=True):
         assert len(actions) == len(lift_idx), len(actions)
 
         fingertip_indices = [4,8,12,16]
         fforce_fingertip = isaac.force_sensor.reshape(isaac.num_envs, -1, 6)[:, isaac.fforces_idx, :3][:,fingertip_indices,:]
         fforce_max_env = fforce_fingertip.max(dim=1)[0]
         unsafe_mask = torch.logical_or(fforce_max_env[:,0].abs() > thr_x, fforce_max_env[:,2].abs() > thr_z)[lift_idx]
+        if not execute:
+            return unsafe_mask
 
         unsafe_idx = torch.arange(len(actions),device=actions.device)[unsafe_mask]
         if len(unsafe_idx) == 0:

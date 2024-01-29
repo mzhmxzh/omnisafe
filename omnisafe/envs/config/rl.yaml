@@ -87,3 +87,5 @@ wrapper_thr_x: 10.0
 wrapper_thr_z: 10.0
 
 force_z_noise: 10.0
+
+use_all_sensor_cost: True
