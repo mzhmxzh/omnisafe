@@ -88,7 +88,7 @@ class SafetyDexgraspEnv(CMDP):
         cost = current_state['cost']
         
         current_state['success'] = self._env.record_success
-        current_state['net_input'] = net_input
+        current_state['reset_indices'] = reset_indices
         
         return net_input, current_state['reward'], cost, terminated, truncated, current_state
     

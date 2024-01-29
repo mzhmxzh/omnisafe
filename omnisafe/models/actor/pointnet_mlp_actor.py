@@ -112,7 +112,23 @@ class PointnetMLPActor(GaussianActor):
     
     def train_parameters(self):
         return list(self.policy.parameters()) + list(self.feature_extractor.parameters())
+
+    def pred_action(self, robot_state, observation_feature, output_raw=False, goal=None):
+        if goal is not None:
+            observation_feature = torch.cat([observation_feature, goal], dim=1)
+        return self.policy.pred_action(robot_state, observation_feature, output_raw)
+
+    def sample_action(self, robot_state, observation_feature, output_raw=False, goal=None):
+        if goal is not None:
+            observation_feature = torch.cat([observation_feature, goal], dim=1)
+        return self.policy.sample_action(robot_state, observation_feature, output_raw)
     
+    def get_observation_feature(self, robot_state_stacked, visual_observation):
+        return self.feature_extractor(robot_state_stacked, visual_observation)
+    
+    def log_prob2(self, robot_state, observation_feature, raw_action):
+        return self.policy.log_prob(robot_state, observation_feature, raw_action, input_raw=True)
+
     def get_obs_feature(self, obs):
         robot_state_stacked = obs[:, :25].reshape(len(obs), 1, 25)
         visual_observation = obs[:, 25:].reshape(len(obs), -1, 3)

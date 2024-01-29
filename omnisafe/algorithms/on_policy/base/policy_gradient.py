@@ -143,14 +143,8 @@ class PolicyGradient(BaseAlgo):
         # )
         current_state = self._env._env.__getattr__('_env')._env.get_state()
         net_input = self._env._env.__getattr__('_env')._obs_wrapper.query(current_state)
-        action, value_r, value_c, logp = self._actor_critic.step(net_input)
-        net_output = dict(
-            action=action,
-            value_r=value_r,
-            value_c=value_c,
-            logp=logp,
-        )
-        self._buf = ReplayBuffer(self._env._env._config, dict(net_input=net_input), net_output)
+        net_output = self._actor_critic.sample_action(net_input)
+        self._buf = ReplayBuffer(self._env._env._config, net_input, net_output)
 
     def _init_log(self) -> None:
         """Log info about epoch.
@@ -290,7 +284,7 @@ class PolicyGradient(BaseAlgo):
             
             print('available', self._buf.storage['available'][self._buf.step:self._buf.step+self._buf.inner_iters, 0])
             print('reward', self._buf.storage['reward'][self._buf.step:self._buf.step+self._buf.inner_iters, 0])
-            print('value_r', self._buf.storage['value_r'][self._buf.step:self._buf.step+self._buf.inner_iters, 0])
+            print('value_r', self._buf.storage['value'][self._buf.step:self._buf.step+self._buf.inner_iters, 0])
             print('return', self._buf.storage['return'][self._buf.step:self._buf.step+self._buf.inner_iters, 0])
             print('advantage', self._buf.storage['advantage'][self._buf.step:self._buf.step+self._buf.inner_iters, 0])
             
@@ -371,48 +365,51 @@ class PolicyGradient(BaseAlgo):
         
         args = self._env._env._config
         
-        with torch.no_grad():
-            old_distribution = self._actor_critic.actor(self._buf.get_all(shuffle=False)['net_input'])
-        
         update_counts = 0
         final_kl = 0.0
         
         for epoch in range(args.ppo_epochs):
             for batch in self._buf.get_batches(args.batch_size):
-                for param_group in self._actor_critic.actor_critic_optimizer.param_groups:
-                    param_group['lr'] = self._step_size
-                # for param_group in self._actor_critic.actor_optimizer.param_groups:
-                #     param_group['lr'] = self._step_size
-                # for param_group in self._actor_critic.reward_critic_optimizer.param_groups:
-                #     param_group['lr'] = self._step_size
-                # if self._cfgs.algo_cfgs.use_cost:
-                #     for param_group in self._actor_critic.cost_critic_optimizer.param_groups:
-                #         param_group['lr'] = self._step_size
-                obs = batch['net_input']
-                act = batch['action']
-                logp = batch['logp']
-                adv_r = batch['advantage']
-                adv_c = torch.zeros_like(adv_r)
-                target_value_r = batch['return']
-                target_value_c = torch.zeros_like(target_value_r)
-                self._update_actor_critic(obs, act, logp, adv_r, adv_c, target_value_r, target_value_c)
+                net_output = self._actor_critic.evaluate({k: batch[k] for k in ['robot_state_stacked', 'visual_observation', 'progress_buf', 'goal']}, batch['raw_action'])
                 
-                with torch.no_grad():
-                    new_distribution = self._actor_critic.actor(self._buf.get_all(shuffle=False)['net_input'])
-                    kl_mean = (
-                        torch.distributions.kl.kl_divergence(old_distribution, new_distribution)
-                        .sum(-1, keepdim=True)
-                        .mean()
-                    )
-                    # kl_mean = distributed.dist_avg(kl_mean)
+                kl = torch.sum(net_output['sigma'].log() - batch['sigma'].log() + (torch.square(batch['sigma']) + torch.square(batch['mu'] - net_output['mu'])) / (2.0 * torch.square(net_output['sigma'])) - 0.5, dim=-1)
+                kl_mean = kl.mean()
                 
-
                 # if kl_mean > args.desired_kl * 2.0:
                 #     self._step_size = max(1e-5, self._step_size / 1.5)
                 # elif kl_mean < args.desired_kl / 2.0 and kl_mean > 0.0:
                 #     self._step_size = min(1e-2, self._step_size * 1.5)
+                
+                for param_group in self._actor_critic.actor_critic_optimizer.param_groups:
+                    param_group['lr'] = self._step_size
+                
                 # if kl_mean > args.desired_kl:
                 #     break
+                
+                value_loss = (batch['return'] - net_output['value']).square().mean()
+                        
+                ratio = torch.exp(net_output['log_prob'] - batch['log_prob'])
+                # print('ratio', ratio.min(), ratio.max(), ratio.std(), ratio.mean())
+                surrogate = -torch.squeeze(batch['advantage']) * ratio
+                surrogate_clipped = -torch.squeeze(batch['advantage']) * torch.clamp(ratio, 1.0 - args.clip_param, 1.0 + args.clip_param)
+                surrogate_loss = torch.max(surrogate, surrogate_clipped).mean()
+                loss = surrogate_loss + args.value_loss_weight * value_loss
+                
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self._actor_critic.parameters(), args.max_grad_norm)
+                self._actor_critic.actor_critic_optimizer.step()
+                self._actor_critic.actor_critic_optimizer.zero_grad()
+                
+                self._logger.store({'Loss/Loss_reward_critic': value_loss.mean().item()})
+                self._logger.store(
+                    {
+                        'Train/Entropy': 0,
+                        'Train/PolicyRatio': ratio,
+                        'Train/PolicyStd': self._actor_critic.actor.policy.log_std.exp().mean().item(),
+                        'Loss/Loss_pi': surrogate_loss.mean().item(),
+                    },
+                )
+                
             
             final_kl = kl_mean.item()
             update_counts += 1
@@ -420,7 +417,7 @@ class PolicyGradient(BaseAlgo):
         self._logger.store(
             {
                 'Train/StopIter': update_counts,  # pylint: disable=undefined-loop-variable
-                'Value/Adv': adv_r.mean().item(),
+                'Value/Adv': batch['advantage'].mean().item(),
                 'Train/KL': final_kl,
             },
         )

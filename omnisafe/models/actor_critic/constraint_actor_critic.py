@@ -93,6 +93,21 @@ class ConstraintActorCritic(ActorCritic):
         #         self.cost_critic.parameters(),
         #         lr=model_cfgs.critic.lr,
         #     )
+    
+    def sample_action(self, obs):
+        obs_feature, _ = self.actor.get_observation_feature(obs['robot_state_stacked'], obs['visual_observation'])
+        action_dict = dict(obs_feature=obs_feature)
+        action_dict.update(self.actor.sample_action(obs['robot_state_stacked'][:, 0], obs_feature))
+        action_dict['value'] = self.reward_critic(obs_feature)
+        return action_dict
+    
+    def evaluate(self, obs, raw_action):
+        action_dict = self.sample_action(obs)
+        obs_feature = action_dict['obs_feature']
+        if obs.get('goal', None) is not None:
+            obs_feature = torch.cat([obs_feature, obs['goal']], dim=1)
+        action_dict['log_prob'] = self.actor.log_prob2(obs['robot_state_stacked'][:, 0], obs_feature, raw_action)
+        return action_dict
 
     def step(
         self,
@@ -113,21 +128,9 @@ class ConstraintActorCritic(ActorCritic):
             log_prob: The log probability of the action.
         """
         with torch.no_grad():
-            action = self.actor.predict(obs, deterministic=deterministic)
-            log_prob = self.actor.log_prob(action)
-            
-            if len(obs.shape) == 1:
-                obs_feature = self.actor.get_obs_feature(obs.unsqueeze(0))
-                value_r = self.reward_critic(obs_feature.squeeze(0))
-                obs_feature = self.actor.get_obs_feature(obs.unsqueeze(0))
-                value_c = self.cost_critic(obs_feature.squeeze(0))
-            else:
-                obs_feature = self.actor.get_obs_feature(obs)
-                value_r = self.reward_critic(obs_feature)
-                obs_feature = self.actor.get_obs_feature(obs)
-                value_c = self.cost_critic(obs_feature)
+            action_dict = self.sample_action(obs)
 
-        return action, value_r, value_c, log_prob
+        return action_dict, None, None, None
 
     def forward(
         self,

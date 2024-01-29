@@ -1,6 +1,6 @@
 exp_name: temp
-model_path: experiments/ppo/exp_tmp_car4/checkpoints/iter_3k.pt
-gpu: 4
+model_path: null
+gpu: 7
 seed: 1812
 num_frames: 1
 use_loss_tpen: False
