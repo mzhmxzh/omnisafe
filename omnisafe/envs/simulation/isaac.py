@@ -852,11 +852,11 @@ class Env():
         self.record_unsafe_fingers[metric_idx] = torch.logical_or(self.record_unsafe_fingers[metric_idx],self.unsafe_fingers[metric_idx]).float()
         self.record_rollback_buf[metric_idx] = torch.logical_or(self.record_rollback_buf[metric_idx],self.rollback_buf[metric_idx]).float()
         self.record_unsafe_all[metric_idx] = torch.logical_or(self.record_unsafe_all[metric_idx],unsafe_all[metric_idx]).float()
-        metrics["record_unsafe_table"] = record_unsafe_table
-        metrics["record_unsafe_object"] = record_unsafe_object
-        metrics["record_unsafe_fingers"] = record_unsafe_fingers
-        metrics["record_rollback_buf"] = record_rollback_buf
-        metrics["record_unsafe_all"] = record_unsafe_all
+        metrics["record_unsafe_table"] = self.record_unsafe_table
+        metrics["record_unsafe_object"] = self.record_unsafe_object
+        metrics["record_unsafe_fingers"] = self.record_unsafe_fingers
+        metrics["record_rollback_buf"] = self.record_rollback_buf
+        metrics["record_unsafe_all"] = self.record_unsafe_all
 
  
         reward_detail_dict.update(metrics)
