@@ -277,6 +277,11 @@ class Env():
         self.unsafe_table = torch.zeros((self.num_envs,), device=self.device)
         self.unsafe_object = torch.zeros((self.num_envs,), device=self.device)
         self.unsafe_fingers = torch.zeros((self.num_envs,), device=self.device)
+        self.record_rollback_buf = torch.zeros((self.num_envs,), device=self.device)
+        self.record_unsafe_table = torch.zeros((self.num_envs,), device=self.device)
+        self.record_unsafe_object = torch.zeros((self.num_envs,), device=self.device)
+        self.record_unsafe_fingers = torch.zeros((self.num_envs,), device=self.device)
+        self.record_unsafe_all = torch.zeros((self.num_envs,), device=self.device)
         rigid_body_tensor = self.gym.acquire_rigid_body_state_tensor(self.sim)
         rigid_body_tensor = gymtorch.wrap_tensor(rigid_body_tensor).view(self.num_envs, -1, 13)
         self.rb_forces = torch.zeros((self.num_envs, rigid_body_tensor.shape[1], 3), dtype=torch.float, device=self.device)
@@ -341,6 +346,19 @@ class Env():
         self.gym.step_graphics(self.sim)
 
         self.controller = PIDController(0)
+        self.thr_x = self.config.get("wrapper_thr_x", 10.0)
+        self.thr_z = self.config.get("wrapper_thr_z", 10.0)
+        self.thr_obj_force = self.config.get("force_z_noise", 10.0)
+        self.sensor_force_thr = self.config.get('sensor_force_thr',10.0)
+        self.sensor_torque_thr = self.config.get('sensor_torque_thr',10.0)
+        if self.config.force_scale > 0.0:
+            self.thr_x += self.config.force_scale
+            self.thr_z += self.config.force_scale
+            self.thr_obj_force += self.config.force_scale
+            self.sensor_force_thr += self.config.force_scale
+            self.sensor_torque_thr += self.config.force_scale * 0.2
+
+        self.cost = torch.zeros((self.num_envs),device=self.device) * 5
         
         # self.gym = bind_visualizer_to_gym(self.gym, self.sim)
         # set_gpu_pipeline(True)
@@ -349,6 +367,12 @@ class Env():
         if indices is None:
             indices = torch.arange(0, self.num_envs, device=self.device, dtype=torch.long)
         self.rb_forces[indices, :, :] = 0.0
+        self.record_unsafe_table[indices] = (self.record_unsafe_table[indices] > 1).float()
+        self.record_unsafe_object[indices] = (self.record_unsafe_object[indices] > 1).float()
+        self.record_unsafe_fingers[indices] = (self.record_unsafe_fingers[indices] > 1).float()
+        self.record_rollback_buf[indices] = (self.record_rollback_buf[indices] > 1).float()
+        self.record_unsafe_all[indices] = (self.record_unsafe_all[indices] > 1).float()
+
         self.record_success[indices] = self.check_success()[indices]
         self.record_angle[indices] = pttf.so3_rotation_angle(self.rel_goal_rot[indices], eps=1e-3)
         arange = torch.arange(0, len(indices), device=self.device, dtype=torch.long)
@@ -455,6 +479,21 @@ class Env():
             self.step()
         return self.get_state()
 
+    def safety_wrapper_no_execution(self, actions, lift_idx):
+        assert len(actions) == len(lift_idx), len(actions)
+        unsafe = self.wrapper.direct(actions, execute=False)
+        self.unsafe_table[lift_idx] = unsafe.float()
+
+        assert len(actions) == len(lift_idx), len(actions)
+        unsafe_object = self.wrapper.direct_object(self, actions, lift_idx, execute=False)
+        self.unsafe_object[lift_idx] = unsafe_object.float()
+        unsafe = torch.logical_or(unsafe, unsafe_object)
+    
+        unsafe_finger = self.wrapper.direct_fingers(self, actions[unsafe_object == 0], lift_idx[unsafe_object == 0], thr_x=self.thr_x, thr_z=self.thr_z,execute=False)
+        self.unsafe_fingers[lift_idx][unsafe_object == 0] = unsafe_finger.float()
+        unsafe[unsafe_object == 0] = torch.logical_or(unsafe[unsafe_object == 0],unsafe_finger)
+        return unsafe
+
     def safety_wrapper(self, actions, lift_idx, pseudo=False):
         if pseudo:
             assert len(actions) == len(lift_idx), len(actions)
@@ -481,6 +520,7 @@ class Env():
                     self.need_rerandomize = torch.ones_like(self.need_rerandomize, device=self.device).bool()
 
         self.refresh()
+        self.rollback_buf = (self.rollback_buf > 1)
 
         # apply random force
         if self.config.force_scale > 0.0:
@@ -540,7 +580,7 @@ class Env():
             if actions is not None:
                 lift_mask = (self.progress_buf >= 0)
                 lift_idx = torch.arange(0, self.num_envs, device=self.device, dtype=torch.long)[lift_mask]
-                self.target[lift_idx], self.rollback_buf[lift_idx], _ = self.safety_wrapper(actions[lift_idx].clone(),lift_idx,pseudo=False)
+                self.target[lift_idx], self.rollback_buf[lift_idx], self.tpen[lift_idx] = self.safety_wrapper(actions[lift_idx].clone(),lift_idx,pseudo=False)
 
                 # if self.config.physics_randomization and with_delay:
                 #     self.adr_last_action_queue, self.target = update_delay_queue(self.adr_last_action_queue, self.target, self.adr_cfg)
@@ -548,24 +588,52 @@ class Env():
             # rollback envs with unsafe contact, essentially skip one step of execution.
             # Thus Dagger does not see unsafe actions.
             # print(self.rollback_buf.sum())
-            if self.rollback_buf.sum() > 0:
-                self.rollback(self.rollback_buf)
+            # if self.rollback_buf.sum() > 0:
+            #     self.rollback(self.rollback_buf)
             
             
             # if ad-hoc lifting is needed for unsafe envs, implement here
+            self.prev_dof_pos = self.dof_state_tensor[:, :, 0].clone()
+            for step in range(self.substeps):
+                # linear interpolation. Subaction represneted as target pos
+                subactions = self.prev_dof_pos + (self.target - self.prev_dof_pos) * (step+1) / self.substeps
+                self.substep(subactions)
         else:
             lift_mask = (self.progress_buf >= 0)
             lift_idx = torch.arange(0, self.num_envs, device=self.device, dtype=torch.long)[lift_mask]
             if actions is not None:
-                self.target[lift_idx], self.rollback_buf[lift_idx], self.tpen[lift_idx] = self.safety_wrapper(actions[lift_idx].clone(),lift_idx,pseudo=True)
+                self.rollback_buf[lift_idx] = self.safety_wrapper_no_execution(actions[lift_idx].clone(),lift_idx)
             self.global_z_sensor_read = self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.global_forces_idx, 2].sum(dim=1).clone()
 
         
-        self.prev_dof_pos = self.dof_state_tensor[:, :, 0].clone()
-        for step in range(self.substeps):
-            # linear interpolation. Subaction represneted as target pos
-            subactions = self.prev_dof_pos + (self.target - self.prev_dof_pos) * (step+1) / self.substeps
-            self.substep(subactions)
+            self.global_z_sensor_read = self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.global_forces_idx, 2].sum(dim=1).clone()
+            assert self.global_z_sensor_read.dim() == 1, self.global_z_sensor_read.shape
+            force_sensor_read = self.force_sensor.reshape(self.num_envs, -1, 6)[:, :, :3].norm(dim=-1)
+            torque_sensor_read = self.force_sensor.reshape(self.num_envs, -1, 6)[:, :, 3:].norm(dim=-1)
+
+            self.prev_dof_pos = self.dof_state_tensor[:, :, 0].clone()
+            for step in range(self.substeps):
+                # linear interpolation. Subaction represneted as target pos
+                subactions = self.prev_dof_pos + (self.target - self.prev_dof_pos) * (step+1) / self.substeps
+                self.substep(subactions)
+                sub_global_z_sensor_read = self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.global_forces_idx, 2].sum(dim=1).clone()
+                self.global_z_sensor_read = torch.where(sub_global_z_sensor_read > self.global_z_sensor_read, sub_global_z_sensor_read, self.global_z_sensor_read)
+                sub_force_sensor_read = self.force_sensor.reshape(self.num_envs, -1, 6)[:, :, :3].norm(dim=-1)
+                sub_torque_sensor_read = self.force_sensor.reshape(self.num_envs, -1, 6)[:, :, 3:].norm(dim=-1)
+                force_sensor_read = torch.where(sub_force_sensor_read > force_sensor_read, sub_force_sensor_read, force_sensor_read)
+                torque_sensor_read = torch.where(sub_torque_sensor_read > torque_sensor_read, sub_torque_sensor_read, torque_sensor_read)
+
+            force_rollback_mask = force_sensor_read[self.progress_buf >= 0].max(dim=1)[0] > self.sensor_force_thr
+            torque_rollback_mask = torque_sensor_read[self.progress_buf >= 0].max(dim=1)[0] > self.sensor_torque_thr
+            rollback_mask = torch.logical_or(force_rollback_mask,torque_rollback_mask).bool()
+            rollback_idx = torch.arange(self.num_envs,device=self.device,dtype=torch.long)[self.progress_buf >= 0][rollback_mask]
+
+            self.rollback_buf = (self.rollback_buf > 1)
+            self.rollback_buf[self.progress_buf >= 0][rollback_mask] = True
+            if self.config.use_all_sensor_cost:
+                self.cost = self.rollback_buf.float()
+            else:
+                self.cost = self.unsafe_table.float() + self.unsafe_object.float() + self.unsafe_fingers.float()
         
         state = self.get_state()
 
@@ -619,7 +687,8 @@ class Env():
             result_dict['npd'] = self.npd 
             result_dict['boundary_sr'] = self.boundary_sr
             result_dict['adr_ranges'] = self.adr_ranges
-        result_dict['cost'] = torch.zeros_like(result_dict['reward'])
+        result_dict['cost'] = self.cost.float()
+        # result_dict['cost'] = torch.zeros_like(result_dict['reward'])
         return result_dict
 
     def substep(self, subactions):
@@ -761,17 +830,34 @@ class Env():
         # update metric curves
         metrics = {}
         metric_idx = (self.progress_buf >= 0)
-        metrics["unsafe_tpen_proportion"] = self.unsafe_table[metric_idx].mean()
-        metrics["unsafe_object_proportion"] = self.unsafe_object[metric_idx].mean()
-        metrics["unsafe_fingers_proportion"] = self.unsafe_fingers[metric_idx].mean()
-        metrics["unsafe_all_proportion"] = self.unsafe[metric_idx].mean()
+        metrics["unsafe_tpen_proportion"] = self.unsafe_table[:].float()
+        metrics["unsafe_object_proportion"] = self.unsafe_object[:].float()
+        metrics["unsafe_fingers_proportion"] = self.unsafe_fingers[:].float()
+        unsafe_all = torch.logical_or(self.unsafe_table,self.unsafe_object)
+        unsafe_all = torch.logical_or(unsafe_all,self.unsafe_fingers)
+        metrics["unsafe_all_proportion"] = unsafe_all[:].float()
+        metrics["rollback_proportion"] = self.rollback_buf.float()
 
-        metrics["upward_contact_force"] = self.global_z_sensor_read[metric_idx].mean()
+        metrics["upward_contact_force"] = self.global_z_sensor_read[:]
         fingertip_indices = [4,8,12,16]
         fforce_fingertip = self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.fforces_idx, :3][:,fingertip_indices,:]
         fforce_max_env = fforce_fingertip.max(dim=1)[0]
-        metrics["fingertip_force_mean_x"] = fforce_max_env[metric_idx,0].mean()
-        metrics["fingertip_force_mean_z"] = fforce_max_env[metric_idx,2].mean()
+        metrics["fingertip_force_mean_x"] = fforce_max_env[:,0]
+        metrics["fingertip_force_mean_z"] = fforce_max_env[:,2]
+        fforce_all = self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.fforces_idx, :3].max(dim=1)[0].norm(dim=-1)
+        metrics["fforce_all"] = fforce_all
+
+        self.record_unsafe_table[metric_idx] = torch.logical_or(self.record_unsafe_table[metric_idx],self.unsafe_table[metric_idx]).float()
+        self.record_unsafe_object[metric_idx] = torch.logical_or(self.record_unsafe_object[metric_idx],self.unsafe_object[metric_idx]).float()
+        self.record_unsafe_fingers[metric_idx] = torch.logical_or(self.record_unsafe_fingers[metric_idx],self.unsafe_fingers[metric_idx]).float()
+        self.record_rollback_buf[metric_idx] = torch.logical_or(self.record_rollback_buf[metric_idx],self.rollback_buf[metric_idx]).float()
+        self.record_unsafe_all[metric_idx] = torch.logical_or(self.record_unsafe_all[metric_idx],unsafe_all[metric_idx]).float()
+        metrics["record_unsafe_table"] = self.record_unsafe_table
+        metrics["record_unsafe_object"] = self.record_unsafe_object
+        metrics["record_unsafe_fingers"] = self.record_unsafe_fingers
+        metrics["record_rollback_buf"] = self.record_rollback_buf
+        metrics["record_unsafe_all"] = self.record_unsafe_all
+
  
         reward_detail_dict.update(metrics)
         return reward, reward_detail_dict

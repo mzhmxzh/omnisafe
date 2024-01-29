@@ -13,14 +13,14 @@ class ReplayBuffer():
         self.storage = dict()
         for example in [input_dict, output_dict]:
             for k, v in example.items():
-                if type(v) == torch.Tensor and 'unsafe' not in k and 'force' not in k:
+                if type(v) == torch.Tensor:
                     self.storage[k] = torch.zeros_like(v)[None].repeat_interleave(self.inner_iters * self.scale, dim=0)
                     self.num_envs = len(v)
                 else:
                     self.storage[k] = v
         if with_next_state:
             for k, v in input_dict.items():
-                if type(v) == torch.Tensor and 'unsafe' not in k and 'force' not in k:
+                if type(v) == torch.Tensor:
                     self.storage['next_' + k] = torch.zeros_like(v)[None].repeat_interleave(self.inner_iters * self.scale, dim=0)
                 else:
                     self.storage['next_' + k] = v
@@ -33,7 +33,7 @@ class ReplayBuffer():
     def update(self, current_state, output, reward, cost):
         for data_dict in [current_state, output]:
             for k, v in data_dict.items():
-                if type(v) == torch.Tensor and 'unsafe' not in k and 'force' not in k:
+                if type(v) == torch.Tensor:
                     self.storage[k][self.step] = v
         self.storage['reward'][self.step] = reward
         self.storage['cost'][self.step] = cost
@@ -42,7 +42,7 @@ class ReplayBuffer():
     def update_next_state(self, next_state):
         assert self.scale == 1
         for k, v in next_state.items():
-            if type(v) == torch.Tensor and 'unsafe' not in k and 'force' not in k:
+            if type(v) == torch.Tensor:
                 self.storage['next_' + k][(self.step - 1) % self.inner_iters] = v
                 for i in range(1, self.inner_iters):
                     self.storage['next_' + k][(self.step - 1 - i) % self.inner_iters] = self.storage[k][(self.step - i) % self.inner_iters]
@@ -99,7 +99,7 @@ class ReplayBuffer():
             batch_envs = batch_indices % self.num_envs
             batch = dict(iters=batch_iters, envs=batch_envs)
             for k, v in self.storage.items():
-                if type(v) == torch.Tensor and 'unsafe' not in k and 'force' not in k:
+                if type(v) == torch.Tensor:
                     batch[k] = v[self.step:self.step+self.inner_iters][batch_iters, batch_envs].clone()
                 else:
                     batch[k] = v
