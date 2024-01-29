@@ -25,15 +25,18 @@ class ReplayBuffer():
                 else:
                     self.storage['next_' + k] = v
         self.storage['return'] = torch.zeros((self.inner_iters * self.scale, self.num_envs), device=self.device)
+        self.storage['return_c'] = torch.zeros((self.inner_iters * self.scale, self.num_envs), device=self.device)
         self.storage['advantage'] = torch.zeros((self.inner_iters * self.scale, self.num_envs), device=self.device)
+        self.storage['advantage_c'] = torch.zeros((self.inner_iters * self.scale, self.num_envs), device=self.device)
         self.step = 0
     
-    def update(self, current_state, output, reward):
+    def update(self, current_state, output, reward, cost):
         for data_dict in [current_state, output]:
             for k, v in data_dict.items():
                 if type(v) == torch.Tensor and 'unsafe' not in k and 'force' not in k:
                     self.storage[k][self.step] = v
         self.storage['reward'][self.step] = reward
+        self.storage['cost'][self.step] = cost
         self.step = (self.step + 1) % (self.inner_iters * self.scale)
     
     def update_next_state(self, next_state):
@@ -44,7 +47,7 @@ class ReplayBuffer():
                 for i in range(1, self.inner_iters):
                     self.storage['next_' + k][(self.step - 1 - i) % self.inner_iters] = self.storage[k][(self.step - i) % self.inner_iters]
     
-    def compute_returns(self, last_values, gamma, lam):
+    def compute_returns(self, last_values, last_costs, gamma, lam):
         assert self.scale == 2
         for j in range(self.step, self.step+self.inner_iters):
             advantage = 0
@@ -62,6 +65,23 @@ class ReplayBuffer():
 
         advantage = self.storage['advantage'][self.step:self.step+self.inner_iters].reshape(-1)[self.storage['available'][self.step:self.step+self.inner_iters].reshape(-1).nonzero().reshape(-1)]
         self.storage['advantage'] = self.storage['advantage'] / (advantage.std() + 1e-8)
+        
+        for j in range(self.step, self.step+self.inner_iters):
+            advantage = 0
+            for i in reversed(range(self.inner_iters)):
+                idx = (j + i) % (2 * self.inner_iters)
+                if idx == (self.step - 1) % (2 * self.inner_iters):
+                    next_values = last_costs
+                else:
+                    next_values = self.storage['value_c'][(idx+1) % (2*self.inner_iters)]
+
+                delta = self.storage['cost'][idx] + gamma * next_values - self.storage['value_c'][idx]
+                advantage = delta + gamma * lam * advantage
+            self.storage['advantage_c'][j%(2*self.inner_iters)] = advantage 
+        self.storage['return_c'] = self.storage['advantage_c'] + self.storage['value_c']
+
+        advantage = self.storage['advantage_c'][self.step:self.step+self.inner_iters].reshape(-1)[self.storage['available'][self.step:self.step+self.inner_iters].reshape(-1).nonzero().reshape(-1)]
+        self.storage['advantage_c'] = self.storage['advantage_c'] / (advantage.std() + 1e-8)
     
     def get_batches(self, batch_size, shuffle=True):
         availabe_indices = self.storage['available'][self.step:self.step+self.inner_iters].reshape(-1).nonzero().reshape(-1)

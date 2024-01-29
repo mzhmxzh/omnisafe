@@ -60,10 +60,6 @@ class CPO(TRPO):
         grads: torch.Tensor,
         p_dist: torch.distributions.Distribution,
         obs: torch.Tensor,
-        act: torch.Tensor,
-        logp: torch.Tensor,
-        adv_r: torch.Tensor,
-        adv_c: torch.Tensor,
         loss_reward_before: torch.Tensor,
         loss_cost_before: torch.Tensor,
         total_steps: int = 15,
@@ -122,12 +118,12 @@ class CPO(TRPO):
             with torch.no_grad():
                 try:
                     # loss of policy reward from target/expected reward
-                    loss_reward = self._loss_pi(obs=obs, act=act, logp=logp, adv=adv_r)
+                    loss_reward = self._loss_pi(obs)
                 except ValueError:
                     step_frac *= decay
                     continue
                 # loss of cost of policy cost from real/expected reward
-                loss_cost = self._loss_pi_cost(obs=obs, act=act, logp=logp, adv_c=adv_c)
+                loss_cost = self._loss_pi_cost(obs)
                 # compute KL distance between new and old policy
                 q_dist = self._actor_critic.actor(obs)
                 kl = torch.distributions.kl.kl_divergence(p_dist, q_dist).mean()
@@ -137,10 +133,10 @@ class CPO(TRPO):
             loss_cost_diff = loss_cost - loss_cost_before
 
             # average across MPI processes...
-            kl = distributed.dist_avg(kl)
+            # kl = distributed.dist_avg(kl)
             # pi_average of torch_kl above
-            loss_reward_improve = distributed.dist_avg(loss_reward_improve)
-            loss_cost_diff = distributed.dist_avg(loss_cost_diff)
+            # loss_reward_improve = distributed.dist_avg(loss_reward_improve)
+            # loss_cost_diff = distributed.dist_avg(loss_cost_diff)
             self._logger.log(
                 f'Expected Improvement: {expected_reward_improve} Actual: {loss_reward_improve}',
             )
@@ -181,10 +177,7 @@ class CPO(TRPO):
 
     def _loss_pi_cost(
         self,
-        obs: torch.Tensor,
-        act: torch.Tensor,
-        logp: torch.Tensor,
-        adv_c: torch.Tensor,
+        batch: torch.Tensor,
     ) -> torch.Tensor:
         r"""Compute the performance of cost on this moment.
 
@@ -206,10 +199,10 @@ class CPO(TRPO):
         Returns:
             The loss of the cost performance.
         """
-        self._actor_critic.actor(obs)
-        logp_ = self._actor_critic.actor.log_prob(act)
-        ratio = torch.exp(logp_ - logp)
-        return (ratio * adv_c).mean()
+        net_output = self._actor_critic.evaluate({k: batch[k] for k in ['robot_state_stacked', 'visual_observation', 'progress_buf', 'goal']}, batch['raw_action'])
+        ratio = torch.exp(net_output['log_prob'] - batch['log_prob'])
+        loss = (ratio * torch.squeeze(batch['advantage_c'])).mean()
+        return loss
 
     # pylint: disable=invalid-name
     def _determine_case(
@@ -340,10 +333,6 @@ class CPO(TRPO):
     def _update_actor(
         self,
         obs: torch.Tensor,
-        act: torch.Tensor,
-        logp: torch.Tensor,
-        adv_r: torch.Tensor,
-        adv_c: torch.Tensor,
     ) -> None:
         """Update policy network.
 
@@ -363,15 +352,19 @@ class CPO(TRPO):
             adv_r (torch.Tensor): The reward advantage tensor.
             adv_c (torch.Tensor): The cost advantage tensor.
         """
-        self._fvp_obs = obs[:: self._cfgs.algo_cfgs.fvp_sample_freq]
+        self._fvp_obs = dict(
+            robot_state_stacked=obs['robot_state_stacked'][:: self._cfgs.algo_cfgs.fvp_sample_freq],
+            visual_observation=obs['visual_observation'][:: self._cfgs.algo_cfgs.fvp_sample_freq],
+        )
         theta_old = get_flat_params_from(self._actor_critic.actor)
         self._actor_critic.actor.zero_grad()
-        loss_reward = self._loss_pi(obs, act, logp, adv_r)
-        loss_reward_before = distributed.dist_avg(loss_reward)
+        loss_reward = self._loss_pi(obs)
+        # loss_reward_before = distributed.dist_avg(loss_reward)
+        loss_reward_before = loss_reward.clone()
         p_dist = self._actor_critic.actor(obs)
 
         loss_reward.backward()
-        distributed.avg_grads(self._actor_critic.actor)
+        # distributed.avg_grads(self._actor_critic.actor)
 
         grads = -get_flat_gradients_from(self._actor_critic.actor)
         x = conjugate_gradients(self._fvp, grads, self._cfgs.algo_cfgs.cg_iters)
@@ -381,11 +374,12 @@ class CPO(TRPO):
         alpha = torch.sqrt(2 * self._cfgs.algo_cfgs.target_kl / (xHx + 1e-8))
 
         self._actor_critic.zero_grad()
-        loss_cost = self._loss_pi_cost(obs, act, logp, adv_c)
-        loss_cost_before = distributed.dist_avg(loss_cost)
+        loss_cost = self._loss_pi_cost(obs)
+        # loss_cost_before = distributed.dist_avg(loss_cost)
+        loss_cost_before = loss_cost.clone()
 
         loss_cost.backward()
-        distributed.avg_grads(self._actor_critic.actor)
+        # distributed.avg_grads(self._actor_critic.actor)
 
         b_grads = get_flat_gradients_from(self._actor_critic.actor)
         ep_costs = self._logger.get_stats('Metrics/EpCost')[0] - self._cfgs.algo_cfgs.cost_limit
@@ -421,10 +415,6 @@ class CPO(TRPO):
             grads=grads,
             p_dist=p_dist,
             obs=obs,
-            act=act,
-            logp=logp,
-            adv_r=adv_r,
-            adv_c=adv_c,
             loss_reward_before=loss_reward_before,
             loss_cost_before=loss_cost_before,
             total_steps=20,
@@ -436,8 +426,8 @@ class CPO(TRPO):
         set_param_values_to_model(self._actor_critic.actor, theta_new)
 
         with torch.no_grad():
-            loss_reward = self._loss_pi(obs, act, logp, adv_r)
-            loss_cost = self._loss_pi_cost(obs, act, logp, adv_c)
+            loss_reward = self._loss_pi(obs)
+            loss_cost = self._loss_pi_cost(obs)
             loss = loss_reward + loss_cost
 
         self._logger.store(

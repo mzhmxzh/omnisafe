@@ -86,6 +86,7 @@ class ConstraintActorCritic(ActorCritic):
             self.reward_critic[0].load_state_dict(critic_state_dict)
         
         # self.actor_critic_optimizer: optim.Optimizer = optim.Adam(self.parameters(), lr=model_cfgs.actor.lr)
+        self.full_optimizer = optim.Adam(self.parameters(), lr=model_cfgs.critic.lr)
 
         # if model_cfgs.critic.lr is not None:
         #     self.cost_critic_optimizer: optim.Optimizer
@@ -99,6 +100,7 @@ class ConstraintActorCritic(ActorCritic):
         action_dict = dict(obs_feature=obs_feature)
         action_dict.update(self.actor.sample_action(obs['robot_state_stacked'][:, 0], obs_feature))
         action_dict['value'] = self.reward_critic(obs_feature)
+        action_dict['value_c'] = self.cost_critic(obs_feature)
         return action_dict
     
     def evaluate(self, obs, raw_action):

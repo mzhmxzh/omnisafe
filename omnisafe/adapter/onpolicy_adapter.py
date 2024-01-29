@@ -89,7 +89,7 @@ class OnPolicyAdapter(OnlineAdapter):
             _, _, _, terminated, truncated, _ = self.step(net_output['action'])
             current_state = self._env.__getattr__('_env')._env.get_state()
             
-            buffer.update(net_input, net_output, current_state['reward'])
+            buffer.update(net_input, net_output, current_state['reward'], current_state['cost'])
 
             self._log_value(reward=current_state['reward'], cost=current_state['cost'], info=current_state)
 
@@ -138,7 +138,7 @@ class OnPolicyAdapter(OnlineAdapter):
         
         net_input = self._env.__getattr__('_env')._obs_wrapper.query(current_state)
         net_output = agent.sample_action(net_input)
-        buffer.compute_returns(net_output['value'], self._cfgs.algo_cfgs.gamma, self._cfgs.algo_cfgs.lam)
+        buffer.compute_returns(net_output['value'], net_output['value_c'], self._cfgs.algo_cfgs.gamma, self._cfgs.algo_cfgs.lam)
 
     def _log_value(
         self,

@@ -62,6 +62,7 @@ class PointnetMLPActor(GaussianActor):
             dict(
                 split_path='data/splits-v15/bc_dataset.json',
                 specify_obj='sem-Car-da496ba5f90a476a1493b1a3f79fe4c6_006',
+                # specify_obj=None,
                 simulate_mode='train',
                 obj_num=None,
             )
@@ -192,9 +193,10 @@ class PointnetMLPActor(GaussianActor):
         Returns:
             The current distribution.
         """
-        self._current_dist = self._distribution(obs)
-        self._after_inference = True
-        return self._current_dist
+        obs_feature, _ = self.get_observation_feature(obs['robot_state_stacked'], obs['visual_observation'])
+        action_dict = self.sample_action(obs['robot_state_stacked'][:, 0], obs_feature)
+        distribution = Normal(action_dict['mu'], action_dict['sigma'])
+        return distribution
 
     def log_prob(self, act: torch.Tensor) -> torch.Tensor:
         """Compute the log probability of the action given the current distribution.

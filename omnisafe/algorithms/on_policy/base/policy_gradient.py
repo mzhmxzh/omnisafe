@@ -287,6 +287,10 @@ class PolicyGradient(BaseAlgo):
             print('value_r', self._buf.storage['value'][self._buf.step:self._buf.step+self._buf.inner_iters, 0])
             print('return', self._buf.storage['return'][self._buf.step:self._buf.step+self._buf.inner_iters, 0])
             print('advantage', self._buf.storage['advantage'][self._buf.step:self._buf.step+self._buf.inner_iters, 0])
+            print('cost', self._buf.storage['cost'][self._buf.step:self._buf.step+self._buf.inner_iters, 0])
+            print('value_c', self._buf.storage['value_c'][self._buf.step:self._buf.step+self._buf.inner_iters, 0])
+            print('return_c', self._buf.storage['return_c'][self._buf.step:self._buf.step+self._buf.inner_iters, 0])
+            print('advantage_c', self._buf.storage['advantage_c'][self._buf.step:self._buf.step+self._buf.inner_iters, 0])
             
             if epoch < (args.init_timesteps + args.act_timesteps) / args.inner_iters + 1:
                 continue
@@ -592,10 +596,7 @@ class PolicyGradient(BaseAlgo):
 
     def _loss_pi(
         self,
-        obs: torch.Tensor,
-        act: torch.Tensor,
-        logp: torch.Tensor,
-        adv: torch.Tensor,
+        batch
     ) -> torch.Tensor:
         r"""Computing pi/actor loss.
 
@@ -620,18 +621,17 @@ class PolicyGradient(BaseAlgo):
         Returns:
             The loss of pi/actor.
         """
-        distribution = self._actor_critic.actor(obs)
-        logp_ = self._actor_critic.actor.log_prob(act)
-        std = self._actor_critic.actor.std
-        ratio = torch.exp(logp_ - logp)
-        loss = -(ratio * adv).mean()
-        entropy = distribution.entropy().mean().item()
+        
+        net_output = self._actor_critic.evaluate({k: batch[k] for k in ['robot_state_stacked', 'visual_observation', 'progress_buf', 'goal']}, batch['raw_action'])
+        ratio = torch.exp(net_output['log_prob'] - batch['log_prob'])
+        loss = -(ratio * torch.squeeze(batch['advantage'])).mean()
         self._logger.store(
             {
-                'Train/Entropy': entropy,
+                'Train/Entropy': 0,
                 'Train/PolicyRatio': ratio,
-                'Train/PolicyStd': std,
+                'Train/PolicyStd': self._actor_critic.actor.policy.log_std.exp().mean().item(),
                 'Loss/Loss_pi': loss.mean().item(),
             },
         )
+        
         return loss

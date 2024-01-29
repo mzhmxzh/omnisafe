@@ -38,6 +38,7 @@ class SafetyDexgraspEnv(CMDP):
             dict(
                 split_path='data/splits-v15/bc_dataset.json',
                 specify_obj='sem-Car-da496ba5f90a476a1493b1a3f79fe4c6_006',
+                # specify_obj=None,
                 simulate_mode='train',
                 obj_num=None,
             )

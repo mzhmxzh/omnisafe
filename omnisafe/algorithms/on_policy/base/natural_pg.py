@@ -109,7 +109,7 @@ class NaturalPG(PolicyGradient):
         )
 
         flat_grad_grad_kl = torch.cat([grad.contiguous().view(-1) for grad in grads])
-        distributed.avg_tensor(flat_grad_grad_kl)
+        # distributed.avg_tensor(flat_grad_grad_kl)
 
         self._logger.store(
             {
@@ -194,37 +194,38 @@ class NaturalPG(PolicyGradient):
             update of the actor network is rejected, but the update of the critic network is still
             accepted.
         """
-        data = self._buf.get()
-        obs, act, logp, target_value_r, target_value_c, adv_r, adv_c = (
-            data['obs'],
-            data['act'],
-            data['logp'],
-            data['target_value_r'],
-            data['target_value_c'],
-            data['adv_r'],
-            data['adv_c'],
-        )
-        self._update_actor(obs, act, logp, adv_r, adv_c)
-
-        dataloader = DataLoader(
-            dataset=TensorDataset(obs, target_value_r, target_value_c),
-            batch_size=self._cfgs.algo_cfgs.batch_size,
-            shuffle=True,
-        )
-
-        for _ in range(self._cfgs.algo_cfgs.update_iters):
-            for (
-                obs,
-                target_value_r,
-                target_value_c,
-            ) in dataloader:
-                self._update_reward_critic(obs, target_value_r)
-                if self._cfgs.algo_cfgs.use_cost:
-                    self._update_cost_critic(obs, target_value_c)
+        batch_all = self._buf.get_all(shuffle=False)
+        self._update_actor(batch_all)
+        
+        args = self._env._env._config
+        
+        update_counts = 0
+        
+        for epoch in range(args.ppo_epochs):
+            for batch in self._buf.get_batches(args.batch_size):
+                net_output = self._actor_critic.evaluate({k: batch[k] for k in ['robot_state_stacked', 'visual_observation', 'progress_buf', 'goal']}, batch['raw_action'])
+                
+                for param_group in self._actor_critic.full_optimizer.param_groups:
+                    param_group['lr'] = self._step_size
+                
+                value_loss = (batch['return'] - net_output['value']).square().mean()
+                cost_loss = (batch['return_c'] - net_output['value_c']).square().mean()
+                
+                loss = args.cost_loss_weight * cost_loss + args.value_loss_weight * value_loss
+                
+                self._actor_critic.full_optimizer.zero_grad()
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self._actor_critic.parameters(), args.max_grad_norm)
+                self._actor_critic.full_optimizer.step()
+                
+                self._logger.store({'Loss/Loss_reward_critic': value_loss.mean().item()})
+                self._logger.store({'Loss/Loss_cost_critic': cost_loss.mean().item()})
+                
+            update_counts += 1
 
         self._logger.store(
             {
-                'Train/StopIter': self._cfgs.algo_cfgs.update_iters,
-                'Value/Adv': adv_r.mean().item(),
+                'Train/StopIter': update_counts,  # pylint: disable=undefined-loop-variable
+                'Value/Adv': batch['advantage'].mean().item(),
             },
         )

@@ -1,6 +1,6 @@
 exp_name: temp
 model_path: null
-gpu: 7
+gpu: 2
 seed: 1812
 num_frames: 1
 use_loss_tpen: False
@@ -72,6 +72,7 @@ actor:
 learning_rate: 0.0003
 max_grad_norm: 0.5
 value_loss_weight: 2.0
+cost_loss_weight: 2.0
 clip_param: 0.2
 
 trans_reward_weight: 10.0
