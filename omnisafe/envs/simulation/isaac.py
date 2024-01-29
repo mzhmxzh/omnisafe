@@ -617,9 +617,9 @@ class Env():
             rollback_mask = torch.logical_or(force_rollback_mask,torque_rollback_mask).bool()
             rollback_idx = torch.arange(self.num_envs,device=self.device,dtype=torch.long)[self.progress_buf >= 0][rollback_mask]
 
+            self.rollback_buf = (self.rollback_buf > 1)
+            self.rollback_buf[self.progress_buf >= 0][rollback_mask] = True
             if self.config.use_all_sensor_cost:
-                self.rollback_buf = (self.rollback_buf > 1)
-                self.rollback_buf[self.progress_buf >= 0][rollback_mask] = True
                 self.cost = self.rollback_buf.float()
             else:
                 self.cost = self.unsafe_table.float() + self.unsafe_object.float() + self.unsafe_fingers.float()
@@ -676,7 +676,7 @@ class Env():
             result_dict['npd'] = self.npd 
             result_dict['boundary_sr'] = self.boundary_sr
             result_dict['adr_ranges'] = self.adr_ranges
-        result_dict['cost'] = self.rollback_buf.float()
+        result_dict['cost'] = self.cost.float()
         # result_dict['cost'] = torch.zeros_like(result_dict['reward'])
         return result_dict
 
