@@ -847,11 +847,11 @@ class Env():
         fforce_all = self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.fforces_idx, :3].max(dim=1)[0].norm(dim=-1)
         metrics["fforce_all"] = fforce_all
 
-        self.record_unsafe_table[metric_idx] = torch.logical_or(self.record_unsafe_table[metric_idx],self.unsafe_table[metric_idx])
-        self.record_unsafe_object[metric_idx] = torch.logical_or(self.record_unsafe_object[metric_idx],self.unsafe_object[metric_idx])
-        self.record_unsafe_fingers[metric_idx] = torch.logical_or(self.record_unsafe_fingers[metric_idx],self.unsafe_fingers[metric_idx])
-        self.record_rollback_buf[metric_idx] = torch.logical_or(self.record_rollback_buf[metric_idx],self.rollback_buf[metric_idx])
-        self.record_unsafe_all[metric_idx] = torch.logical_or(self.record_unsafe_all[metric_idx],unsafe_all[metric_idx])
+        self.record_unsafe_table[metric_idx] = torch.logical_or(self.record_unsafe_table[metric_idx],self.unsafe_table[metric_idx]).float()
+        self.record_unsafe_object[metric_idx] = torch.logical_or(self.record_unsafe_object[metric_idx],self.unsafe_object[metric_idx]).float()
+        self.record_unsafe_fingers[metric_idx] = torch.logical_or(self.record_unsafe_fingers[metric_idx],self.unsafe_fingers[metric_idx]).float()
+        self.record_rollback_buf[metric_idx] = torch.logical_or(self.record_rollback_buf[metric_idx],self.rollback_buf[metric_idx]).float()
+        self.record_unsafe_all[metric_idx] = torch.logical_or(self.record_unsafe_all[metric_idx],unsafe_all[metric_idx]).float()
         metrics["record_unsafe_table"] = record_unsafe_table
         metrics["record_unsafe_object"] = record_unsafe_object
         metrics["record_unsafe_fingers"] = record_unsafe_fingers
