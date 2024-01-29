@@ -603,6 +603,7 @@ class Env():
             lift_idx = torch.arange(0, self.num_envs, device=self.device, dtype=torch.long)[lift_mask]
             if actions is not None:
                 self.rollback_buf[lift_idx] = self.safety_wrapper_no_execution(actions[lift_idx].clone(),lift_idx)
+                self.target[lift_idx] = actions[lift_idx].clone()
             self.global_z_sensor_read = self.force_sensor.reshape(self.num_envs, -1, 6)[:, self.global_forces_idx, 2].sum(dim=1).clone()
 
         

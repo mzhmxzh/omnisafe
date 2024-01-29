@@ -75,7 +75,7 @@ class OnPolicyAdapter(OnlineAdapter):
             buffer (VectorOnPolicyBuffer): Vector on-policy buffer.
             logger (Logger): Logger, to log ``EpRet``, ``EpCost``, ``EpLen``.
         """
-        self._reset_log()
+        # self._reset_log()
 
         # obs, info = self.reset()
         current_state = self._env.__getattr__('_env')._env.get_state()
@@ -94,11 +94,11 @@ class OnPolicyAdapter(OnlineAdapter):
             self._log_value(reward=current_state['reward'], cost=current_state['cost'], info=current_state)
 
             if self._cfgs.algo_cfgs.use_cost:
-                logger.store({'Value/cost': net_output['value_c']})
-            logger.store({'Value/reward': net_output['value']})
+                logger.store({'Value/cost': net_output['value_c'].clone()})
+            logger.store({'Value/reward': net_output['value'].clone()})
             
-            for key in ['obj_dis_reward', 'reach_reward', 'action_pen', 'contact_reward', 'lift_reward', 'real_obj_height', 'tpen', 'reward']:
-                logger.store({'Rewards/' + key: current_state[key]})
+            for key in ['obj_dis_reward', 'reach_reward', 'action_pen', 'contact_reward', 'lift_reward', 'real_obj_height', 'tpen', 'reward', 'cost']:
+                logger.store({'Rewards/' + key: current_state[key].clone()})
 
             # # sanity check
             # agent.actor(obs)
@@ -119,15 +119,15 @@ class OnPolicyAdapter(OnlineAdapter):
             #     print('logp is not equal to new_logp')
 
             # obs = next_obs
-            epoch_end = step >= steps_per_epoch - 1
+            # epoch_end = step >= steps_per_epoch - 1
             for idx, (done, time_out) in enumerate(zip(terminated, truncated)):
-                if epoch_end or done or time_out:
+                if done or time_out:
 
                     if done or time_out:
                         self._log_metrics(logger, idx)
                         logger.store(
                             {
-                                'Metrics/Succ': self._env.__getattr__('_env')._env.record_success[idx].float(), 
+                                'Metrics/Succ': self._env.__getattr__('_env')._env.record_success[idx].float().clone(), 
                             }
                         )
                         self._reset_log(idx)
@@ -170,9 +170,9 @@ class OnPolicyAdapter(OnlineAdapter):
         """
         logger.store(
             {
-                'Metrics/EpRet': self._ep_ret[idx],
-                'Metrics/EpCost': self._ep_cost[idx],
-                'Metrics/EpLen': self._ep_len[idx],
+                'Metrics/EpRet': self._ep_ret[idx].clone(),
+                'Metrics/EpCost': self._ep_cost[idx].clone(),
+                'Metrics/EpLen': self._ep_len[idx].clone(),
             },
         )
 

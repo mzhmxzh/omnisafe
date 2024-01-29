@@ -217,6 +217,7 @@ class PolicyGradient(BaseAlgo):
         self._logger.register_key('Rewards/real_obj_height', window_length=50)
         self._logger.register_key('Rewards/tpen', window_length=50)
         self._logger.register_key('Rewards/reward', window_length=50)
+        self._logger.register_key('Rewards/cost', window_length=50)
 
         self._logger.register_key('Train/Epoch')
         self._logger.register_key('Train/Entropy')

@@ -1,6 +1,6 @@
 exp_name: temp
 model_path: null
-gpu: 2
+gpu: 4
 seed: 1812
 num_frames: 1
 use_loss_tpen: False
@@ -79,7 +79,7 @@ trans_reward_weight: 10.0
 rot_reward_weight: 1.0
 qpos_reward_weight: 0.5
 
-reward_type: staged2
+reward_type: staged2_lhr
 
 wrapper_object: True
 wrapper_finger: False
