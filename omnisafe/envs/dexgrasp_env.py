@@ -77,9 +77,9 @@ class SafetyDexgraspEnv(CMDP):
         terminated = self._env.progress_buf == self._config.act_timesteps
         truncated = torch.zeros(self._num_envs, dtype=torch.bool, device=action.device)
         reset_indices = (self._env.progress_buf == self._config.act_timesteps).nonzero().reshape(-1)
-        self._env._reset(indices=reset_indices)
         
-        current_state = self._env.get_state()
+        current_state = self._env.get_state()  # TODO
+        self._env._reset(indices=reset_indices)
         
         self._obs_wrapper.reset(current_state, indices=reset_indices)
         net_input = self._obs_wrapper.query(current_state)
@@ -88,7 +88,7 @@ class SafetyDexgraspEnv(CMDP):
         cost = current_state['cost']
         
         current_state['success'] = self._env.record_success
-        current_state['net_input'] = net_input
+        current_state['reset_indices'] = reset_indices
         
         return net_input, current_state['reward'], cost, terminated, truncated, current_state
     

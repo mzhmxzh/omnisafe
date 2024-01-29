@@ -67,10 +67,10 @@ class PPO(PolicyGradient):
         logp_ = self._actor_critic.actor.log_prob(act)
         std = self._actor_critic.actor.std
         ratio = torch.exp(logp_ - logp)
-        print(f'ratio.mean: {ratio.mean()}')
-        print(f'ratio.std: {ratio.std()}')
-        print(f'ratio.max: {ratio.max()}')
-        print(f'ratio.min: {ratio.min()}')
+        # print(f'ratio.mean: {ratio.mean()}')
+        # print(f'ratio.std: {ratio.std()}')
+        # print(f'ratio.max: {ratio.max()}')
+        # print(f'ratio.min: {ratio.min()}')
         if (ratio > 1e5).any():
             print('ratio too large')
         ratio_cliped = torch.clamp(

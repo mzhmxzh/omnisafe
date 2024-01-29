@@ -10,7 +10,6 @@ import torch
 import torch.nn as nn
 from nflows.flows import ConditionalGlow
 from einops import rearrange
-from torch.distributions import Distribution, Normal
 
 from utils.robot_info import UR5_PARAMS
 from networks.mlp import MLP
@@ -137,9 +136,6 @@ class Policy(nn.Module):
 
 
 class GaussianPolicy(Policy):
-    
-    _current_dist: Normal
-    
     def __init__(self, observation_dim, **kwargs):
         super().__init__(**kwargs)
         policy_mlp_parameters=dict(
@@ -187,33 +183,3 @@ class GaussianPolicy(Policy):
                     log_prob=self._log_prob(mu, self.log_std.exp(), actions),
                     mu=mu,
                     sigma=self.log_std.exp().expand(len(mu), -1))
-
-    def _distribution(self, obs: torch.Tensor) -> Normal:
-        """Get the distribution of the actor.
-
-        .. warning::
-            This method is not supposed to be called by users. You should call :meth:`forward`
-            instead.
-
-        Args:
-            obs (torch.Tensor): Observation from environments.
-
-        Returns:
-            The normal distribution of the mean and standard deviation from the actor.
-        """
-        mean = self.policy(obs)
-        std = torch.exp(self.log_std)
-        return Normal(mean, std)
-
-    def forward(self, obs: torch.Tensor) -> Distribution:
-        """Forward method.
-
-        Args:
-            obs (torch.Tensor): Observation from environments.
-
-        Returns:
-            The current distribution.
-        """
-        self._current_dist = self._distribution(obs)
-        self._after_inference = True
-        return self._current_dist

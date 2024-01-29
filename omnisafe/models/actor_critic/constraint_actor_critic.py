@@ -85,14 +85,29 @@ class ConstraintActorCritic(ActorCritic):
             self.actor.load_state_dict(actor_state_dict)
             self.reward_critic[0].load_state_dict(critic_state_dict)
         
-        self.actor_critic_optimizer: optim.Optimizer = optim.Adam(self.parameters(), lr=model_cfgs.actor.lr)
+        # self.actor_critic_optimizer: optim.Optimizer = optim.Adam(self.parameters(), lr=model_cfgs.actor.lr)
 
-        if model_cfgs.critic.lr is not None:
-            self.cost_critic_optimizer: optim.Optimizer
-            self.cost_critic_optimizer = optim.Adam(
-                self.cost_critic.parameters(),
-                lr=model_cfgs.critic.lr,
-            )
+        # if model_cfgs.critic.lr is not None:
+        #     self.cost_critic_optimizer: optim.Optimizer
+        #     self.cost_critic_optimizer = optim.Adam(
+        #         self.cost_critic.parameters(),
+        #         lr=model_cfgs.critic.lr,
+        #     )
+    
+    def sample_action(self, obs):
+        obs_feature, _ = self.actor.get_observation_feature(obs['robot_state_stacked'], obs['visual_observation'])
+        action_dict = dict(obs_feature=obs_feature)
+        action_dict.update(self.actor.sample_action(obs['robot_state_stacked'][:, 0], obs_feature))
+        action_dict['value'] = self.reward_critic(obs_feature)
+        return action_dict
+    
+    def evaluate(self, obs, raw_action):
+        action_dict = self.sample_action(obs)
+        obs_feature = action_dict['obs_feature']
+        if obs.get('goal', None) is not None:
+            obs_feature = torch.cat([obs_feature, obs['goal']], dim=1)
+        action_dict['log_prob'] = self.actor.log_prob2(obs['robot_state_stacked'][:, 0], obs_feature, raw_action)
+        return action_dict
 
     def step(
         self,
@@ -113,17 +128,9 @@ class ConstraintActorCritic(ActorCritic):
             log_prob: The log probability of the action.
         """
         with torch.no_grad():
-            action = self.actor.predict(obs, deterministic=deterministic)
-            log_prob = self.actor.log_prob(action)
-            
-            if len(obs.shape) == 1:
-                value_r = self.reward_critic(self.actor._obs_feature.squeeze(0))
-                value_c = self.cost_critic(self.actor._obs_feature.squeeze(0))
-            else:
-                value_r = self.reward_critic(self.actor._obs_feature)
-                value_c = self.cost_critic(self.actor._obs_feature)
+            action_dict = self.sample_action(obs)
 
-        return action, value_r, value_c, log_prob
+        return action_dict, None, None, None
 
     def forward(
         self,

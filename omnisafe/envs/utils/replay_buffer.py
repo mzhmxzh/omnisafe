@@ -24,10 +24,8 @@ class ReplayBuffer():
                     self.storage['next_' + k] = torch.zeros_like(v)[None].repeat_interleave(self.inner_iters * self.scale, dim=0)
                 else:
                     self.storage['next_' + k] = v
-        self.storage['reward'] = torch.zeros((self.inner_iters * self.scale, self.num_envs), device=self.device)
         self.storage['return'] = torch.zeros((self.inner_iters * self.scale, self.num_envs), device=self.device)
         self.storage['advantage'] = torch.zeros((self.inner_iters * self.scale, self.num_envs), device=self.device)
-        self.storage['available'] = torch.zeros((self.inner_iters * self.scale, self.num_envs), device=self.device)
         self.step = 0
     
     def update(self, current_state, output, reward):
@@ -55,11 +53,12 @@ class ReplayBuffer():
                 if idx == (self.step - 1) % (2 * self.inner_iters):
                     next_values = last_values
                 else:
-                    next_values = self.storage['value_r'][(idx+1) % (2*self.inner_iters)]
-                delta = self.storage['reward'][idx] + gamma * next_values - self.storage['value_r'][idx]
+                    next_values = self.storage['value'][(idx+1) % (2*self.inner_iters)]
+
+                delta = self.storage['reward'][idx] + gamma * next_values - self.storage['value'][idx]
                 advantage = delta + gamma * lam * advantage
             self.storage['advantage'][j%(2*self.inner_iters)] = advantage 
-        self.storage['return'] = self.storage['advantage'] + self.storage['value_r']
+        self.storage['return'] = self.storage['advantage'] + self.storage['value']
 
         advantage = self.storage['advantage'][self.step:self.step+self.inner_iters].reshape(-1)[self.storage['available'][self.step:self.step+self.inner_iters].reshape(-1).nonzero().reshape(-1)]
         self.storage['advantage'] = self.storage['advantage'] / (advantage.std() + 1e-8)

@@ -78,45 +78,33 @@ class OnPolicyAdapter(OnlineAdapter):
         self._reset_log()
 
         # obs, info = self.reset()
-        info = self._env.__getattr__('_env')._env.get_state()
-        obs = self._env.__getattr__('_env')._obs_wrapper.query(info)
+        current_state = self._env.__getattr__('_env')._env.get_state()
         for step in track(
             range(steps_per_epoch),
             description=f'Processing rollout for epoch: {logger.current_epoch}...',
         ):
-            act, value_r, value_c, logp = agent.step(obs)
-            available = info['available']
-            next_obs, reward, cost, terminated, truncated, info = self.step(act)
+            net_input = self._env.__getattr__('_env')._obs_wrapper.query(current_state)
+            net_output = agent.sample_action(net_input)
 
-            self._log_value(reward=reward, cost=cost, info=info)
+            _, _, _, terminated, truncated, _ = self.step(net_output['action'])
+            current_state = self._env.__getattr__('_env')._env.get_state()
+            
+            buffer.update(net_input, net_output, current_state['reward'])
+
+            self._log_value(reward=current_state['reward'], cost=current_state['cost'], info=current_state)
 
             if self._cfgs.algo_cfgs.use_cost:
-                logger.store({'Value/cost': value_c})
-            logger.store({'Value/reward': value_r})
+                logger.store({'Value/cost': net_output['value_c']})
+            logger.store({'Value/reward': net_output['value']})
             
             for key in ['obj_dis_reward', 'reach_reward', 'action_pen', 'contact_reward', 'lift_reward', 'real_obj_height', 'tpen', 'reward']:
-                logger.store({'Rewards/' + key: info[key]})
+                logger.store({'Rewards/' + key: current_state[key]})
 
-            # buffer.store(
-            #     obs=obs,
-            #     act=act,
-            #     reward=reward,
-            #     cost=cost,
-            #     value_r=value_r,
-            #     value_c=value_c,
-            #     logp=logp,
-            # )
-            net_output = dict(
-                action=act.clone(),
-                value_r=value_r.clone(),
-                value_c=value_c.clone(),
-                logp=logp.clone(),
-            )
             # # sanity check
             # agent.actor(obs)
             # new_logp = agent.actor.log_prob(act)
             # assert torch.allclose(logp, new_logp), 'logp is not equal to new_logp'
-            buffer.update(dict(net_input=obs.clone(), available=available.clone()), net_output, reward)
+            
             
             # # sanity check
             # for j in range(step + 1):
@@ -130,7 +118,7 @@ class OnPolicyAdapter(OnlineAdapter):
             # if not torch.allclose(buffer.storage['logp'][buffer_step:buffer_step + step + 1].reshape(-1, *buffer.storage['logp'].shape[2:]), new_logp):
             #     print('logp is not equal to new_logp')
 
-            obs = next_obs
+            # obs = next_obs
             epoch_end = step >= steps_per_epoch - 1
             for idx, (done, time_out) in enumerate(zip(terminated, truncated)):
                 if epoch_end or done or time_out:
@@ -139,7 +127,7 @@ class OnPolicyAdapter(OnlineAdapter):
                         self._log_metrics(logger, idx)
                         logger.store(
                             {
-                                'Metrics/Succ': info['success'][idx].float(), 
+                                'Metrics/Succ': self._env.__getattr__('_env')._env.record_success[idx].float(), 
                             }
                         )
                         self._reset_log(idx)
@@ -147,11 +135,10 @@ class OnPolicyAdapter(OnlineAdapter):
                         self._ep_ret[idx] = 0.0
                         self._ep_cost[idx] = 0.0
                         self._ep_len[idx] = 0.0
-
-                    # buffer.finish_path(last_value_r, last_value_c, idx)
         
-        act, value_r, value_c, logp = agent.step(obs)
-        buffer.compute_returns(value_r, self._cfgs.algo_cfgs.gamma, self._cfgs.algo_cfgs.lam)
+        net_input = self._env.__getattr__('_env')._obs_wrapper.query(current_state)
+        net_output = agent.sample_action(net_input)
+        buffer.compute_returns(net_output['value'], self._cfgs.algo_cfgs.gamma, self._cfgs.algo_cfgs.lam)
 
     def _log_value(
         self,
