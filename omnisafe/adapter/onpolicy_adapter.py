@@ -77,12 +77,15 @@ class OnPolicyAdapter(OnlineAdapter):
         """
         self._reset_log()
 
-        obs, _ = self.reset()
+        # obs, info = self.reset()
+        info = self._env.__getattr__('_env')._env.get_state()
+        obs = self._env.__getattr__('_env')._obs_wrapper.query(info)
         for step in track(
             range(steps_per_epoch),
             description=f'Processing rollout for epoch: {logger.current_epoch}...',
         ):
             act, value_r, value_c, logp = agent.step(obs)
+            available = info['available']
             next_obs, reward, cost, terminated, truncated, info = self.step(act)
 
             self._log_value(reward=reward, cost=cost, info=info)
@@ -90,35 +93,47 @@ class OnPolicyAdapter(OnlineAdapter):
             if self._cfgs.algo_cfgs.use_cost:
                 logger.store({'Value/cost': value_c})
             logger.store({'Value/reward': value_r})
+            
+            for key in ['obj_dis_reward', 'reach_reward', 'action_pen', 'contact_reward', 'lift_reward', 'real_obj_height', 'tpen', 'reward']:
+                logger.store({'Rewards/' + key: info[key]})
 
-            buffer.store(
-                obs=obs,
-                act=act,
-                reward=reward,
-                cost=cost,
-                value_r=value_r,
-                value_c=value_c,
-                logp=logp,
+            # buffer.store(
+            #     obs=obs,
+            #     act=act,
+            #     reward=reward,
+            #     cost=cost,
+            #     value_r=value_r,
+            #     value_c=value_c,
+            #     logp=logp,
+            # )
+            net_output = dict(
+                action=act.clone(),
+                value_r=value_r.clone(),
+                value_c=value_c.clone(),
+                logp=logp.clone(),
             )
+            # # sanity check
+            # agent.actor(obs)
+            # new_logp = agent.actor.log_prob(act)
+            # assert torch.allclose(logp, new_logp), 'logp is not equal to new_logp'
+            buffer.update(dict(net_input=obs.clone(), available=available.clone()), net_output, reward)
+            
+            # # sanity check
+            # for j in range(step + 1):
+            #     buffer_step = (buffer.step + buffer.inner_iters * 2 - 1 - j) % (buffer.inner_iters * 2)
+            #     agent.actor(buffer.storage['net_input'][buffer_step])
+            #     new_logp = agent.actor.log_prob(buffer.storage['action'][buffer_step])
+            #     assert torch.allclose(buffer.storage['logp'][buffer_step], new_logp), 'logp is not equal to new_logp'
+            # buffer_step = (buffer.step + buffer.inner_iters * 2 - 1 - step) % (buffer.inner_iters * 2)
+            # agent.actor(buffer.storage['net_input'][buffer_step:buffer_step + step + 1].reshape(-1, *buffer.storage['net_input'].shape[2:]))
+            # new_logp = agent.actor.log_prob(buffer.storage['action'][buffer_step:buffer_step + step + 1].reshape(-1, *buffer.storage['action'].shape[2:]))
+            # if not torch.allclose(buffer.storage['logp'][buffer_step:buffer_step + step + 1].reshape(-1, *buffer.storage['logp'].shape[2:]), new_logp):
+            #     print('logp is not equal to new_logp')
 
             obs = next_obs
             epoch_end = step >= steps_per_epoch - 1
             for idx, (done, time_out) in enumerate(zip(terminated, truncated)):
                 if epoch_end or done or time_out:
-                    last_value_r = torch.zeros(1)
-                    last_value_c = torch.zeros(1)
-                    if not done:
-                        if epoch_end:
-                            logger.log(
-                                f'Warning: trajectory cut off when rollout by epoch at {self._ep_len[idx]} steps.',
-                            )
-                            _, last_value_r, last_value_c, _ = agent.step(obs[idx])
-                        if time_out:
-                            _, last_value_r, last_value_c, _ = agent.step(
-                                info['final_observation'][idx],
-                            )
-                        last_value_r = last_value_r.unsqueeze(0)
-                        last_value_c = last_value_c.unsqueeze(0)
 
                     if done or time_out:
                         self._log_metrics(logger, idx)
@@ -133,7 +148,10 @@ class OnPolicyAdapter(OnlineAdapter):
                         self._ep_cost[idx] = 0.0
                         self._ep_len[idx] = 0.0
 
-                    buffer.finish_path(last_value_r, last_value_c, idx)
+                    # buffer.finish_path(last_value_r, last_value_c, idx)
+        
+        act, value_r, value_c, logp = agent.step(obs)
+        buffer.compute_returns(value_r, self._cfgs.algo_cfgs.gamma, self._cfgs.algo_cfgs.lam)
 
     def _log_value(
         self,

@@ -10,6 +10,7 @@ import numpy as np
 import transforms3d
 import trimesh as tm
 import torch
+import yaml
 
 from utils.rot6d import robust_compute_rotation_matrix_from_ortho6d
 from utils.robot_info import FINGERTIP_BIAS, FINGERTIP_NORMAL
@@ -17,14 +18,22 @@ from urdf_parser_py.urdf import Robot, Box, Mesh
 import plotly.graph_objects as go
 import pytorch3d.structures
 import pytorch3d.ops
-
+try:
+    from torchprimitivesdf import box_sdf, transform_points_inverse, fixed_transform_points_inverse
+except:
+    print('torchprimitivesdf not installed')
 
 class RobotModel:
-    def __init__(self, urdf_path, n_surface_points=256, device='cpu'):
+    def __init__(self, urdf_path, n_surface_points=256, device='cpu', with_arm=True):
         self.device = device
         self.robot = Robot.from_xml_file(urdf_path)
         
         tactile_points = json.load(open(os.path.join(os.path.dirname(os.path.dirname(urdf_path)), 'addons/ur5_leap/tactile_points.json')))
+        contact_points = json.load(open(os.path.join(os.path.dirname(os.path.dirname(urdf_path)), 'addons/ur5_leap/contact_points.json')))
+        with open(os.path.join(os.path.dirname(os.path.dirname(urdf_path)), 'curobo/ur5_leap.yml'), 'r') as f:
+            curobo_config = yaml.load(f, Loader=yaml.FullLoader)
+        collision_spheres = curobo_config['robot_cfg']['kinematics']['collision_spheres']
+        collision_spheres = {k: [dic['center'] + [dic['radius']] for dic in v] for k, v in collision_spheres.items()}
 
         # build chain
         self.joint_names = []
@@ -43,13 +52,21 @@ class RobotModel:
             self.joints_translation.append(torch.tensor(getattr(joint.origin, 'xyz', [0, 0, 0]), dtype=torch.float, device=device))
             self.joints_rotation.append(torch.tensor(transforms3d.euler.euler2mat(*getattr(joint.origin, 'rpy', [0, 0, 0]), 'sxyz'), dtype=torch.float, device=device))
         self.n_dofs = len([joint_type for joint_type in self.joints_type if joint_type != 'fixed'])
-        self.joint_order = OrderedDict([
-            ('shoulder_pan_joint', 0), ('shoulder_lift_joint', 1), ('elbow_joint', 2), ('wrist_1_joint', 3), ('wrist_2_joint', 4), ('wrist_3_joint', 5), ('ee_fixed_joint', -1), 
-            ('j1', 6), ('j0', 7), ('j2', 8), ('j3', 9), 
-            ('j12', 10), ('j13', 11), ('j14', 12), ('j15', 13), 
-            ('j5', 14), ('j4', 15), ('j6', 16), ('j7', 17), 
-            ('j9', 18), ('j8', 19), ('j10', 20), ('j11', 21)
-        ])
+        if with_arm:
+            self.joint_order = OrderedDict([
+                ('shoulder_pan_joint', 0), ('shoulder_lift_joint', 1), ('elbow_joint', 2), ('wrist_1_joint', 3), ('wrist_2_joint', 4), ('wrist_3_joint', 5), ('ee_fixed_joint', -1), 
+                ('j1', 6), ('j0', 7), ('j2', 8), ('j3', 9), 
+                ('j12', 10), ('j13', 11), ('j14', 12), ('j15', 13), 
+                ('j5', 14), ('j4', 15), ('j6', 16), ('j7', 17), 
+                ('j9', 18), ('j8', 19), ('j10', 20), ('j11', 21)
+            ])
+        else:
+            self.joint_order = OrderedDict([
+                ('j1', 0), ('j0', 1), ('j2', 2), ('j3', 3),
+                ('j12', 4), ('j13', 5), ('j14', 6), ('j15', 7),
+                ('j5', 8), ('j4', 9), ('j6', 10), ('j7', 11),
+                ('j9', 12), ('j8', 13), ('j10', 14), ('j11', 15)
+            ])
 
         # build meshes
         self.mesh = {}
@@ -102,6 +119,13 @@ class RobotModel:
             self.mesh[link.name].update({
                 'tactile_points': torch.tensor(tactile_points[link.name], dtype=torch.float, device=device), 
             })
+            # load contact candidates
+            self.mesh[link.name].update({
+                'contact_candidates': torch.tensor(contact_points[link.name], dtype=torch.float, device=device) if link.name in contact_points else torch.tensor([], dtype=torch.float, device=device).reshape(0, 3)
+            })
+            self.mesh[link.name].update({
+                'collision_spheres': torch.tensor(collision_spheres[link.name], dtype=torch.float, device=device) if link.name in collision_spheres else torch.tensor([], dtype=torch.float, device=device).reshape(0, 4)
+            })
 
         # set joint limits
         self.joints_lower = torch.tensor([joint.limit.lower for joint in self.robot.joints if joint.joint_type == 'revolute'], dtype=torch.float, device=device)
@@ -131,6 +155,44 @@ class RobotModel:
         # indexing
         self.link_name_to_link_index = dict(zip([link_name for link_name in self.mesh], range(len(self.mesh))))
         self.surface_points_link_indices = torch.cat([self.link_name_to_link_index[link_name] * torch.ones(self.mesh[link_name]['surface_points'].shape[0], dtype=torch.long, device=device) for link_name in self.mesh])
+
+        # build collision mask
+        self.adjacency_mask = torch.zeros([len(self.mesh), len(self.mesh)], dtype=torch.bool, device=device)
+        for joint in self.robot.joints:
+            if joint.parent in self.mesh and joint.child in self.mesh:
+                parent_id = self.link_name_to_link_index[joint.parent]
+                child_id = self.link_name_to_link_index[joint.child]
+                self.adjacency_mask[parent_id, child_id] = True
+                self.adjacency_mask[child_id, parent_id] = True
+        self.adjacency_mask[self.link_name_to_link_index['hand_base_link'], self.link_name_to_link_index['thumb_pip']] = True
+        self.adjacency_mask[self.link_name_to_link_index['thumb_pip'], self.link_name_to_link_index['hand_base_link']] = True
+        self.adjacency_mask[self.link_name_to_link_index['hand_base_link'], self.link_name_to_link_index['thumb_dip']] = True
+        self.adjacency_mask[self.link_name_to_link_index['thumb_dip'], self.link_name_to_link_index['hand_base_link']] = True
+        self.adjacency_mask[self.link_name_to_link_index['mcp_joint'], self.link_name_to_link_index['dip']] = True
+        self.adjacency_mask[self.link_name_to_link_index['dip'], self.link_name_to_link_index['mcp_joint']] = True
+        self.adjacency_mask[self.link_name_to_link_index['mcp_joint_2'], self.link_name_to_link_index['dip_2']] = True
+        self.adjacency_mask[self.link_name_to_link_index['dip_2'], self.link_name_to_link_index['mcp_joint_2']] = True
+        self.adjacency_mask[self.link_name_to_link_index['mcp_joint_3'], self.link_name_to_link_index['dip_3']] = True
+        self.adjacency_mask[self.link_name_to_link_index['dip_3'], self.link_name_to_link_index['mcp_joint_3']] = True
+        
+        # build collision mask
+        self.adjacency_mask = torch.zeros([len(self.mesh), len(self.mesh)], dtype=torch.bool, device=device)
+        for joint in self.robot.joints:
+            if joint.parent in self.mesh and joint.child in self.mesh:
+                parent_id = self.link_name_to_link_index[joint.parent]
+                child_id = self.link_name_to_link_index[joint.child]
+                self.adjacency_mask[parent_id, child_id] = True
+                self.adjacency_mask[child_id, parent_id] = True
+        self.adjacency_mask[self.link_name_to_link_index['hand_base_link'], self.link_name_to_link_index['thumb_pip']] = True
+        self.adjacency_mask[self.link_name_to_link_index['thumb_pip'], self.link_name_to_link_index['hand_base_link']] = True
+        self.adjacency_mask[self.link_name_to_link_index['hand_base_link'], self.link_name_to_link_index['thumb_dip']] = True
+        self.adjacency_mask[self.link_name_to_link_index['thumb_dip'], self.link_name_to_link_index['hand_base_link']] = True
+        self.adjacency_mask[self.link_name_to_link_index['mcp_joint'], self.link_name_to_link_index['dip']] = True
+        self.adjacency_mask[self.link_name_to_link_index['dip'], self.link_name_to_link_index['mcp_joint']] = True
+        self.adjacency_mask[self.link_name_to_link_index['mcp_joint_2'], self.link_name_to_link_index['dip_2']] = True
+        self.adjacency_mask[self.link_name_to_link_index['dip_2'], self.link_name_to_link_index['mcp_joint_2']] = True
+        self.adjacency_mask[self.link_name_to_link_index['mcp_joint_3'], self.link_name_to_link_index['dip_3']] = True
+        self.adjacency_mask[self.link_name_to_link_index['dip_3'], self.link_name_to_link_index['mcp_joint_3']] = True
         
         self.hand_pose = None
         self.global_translation = None
@@ -199,6 +261,56 @@ class RobotModel:
                 dis.append(dis_local.reshape(x.shape[0], x.shape[1]))
         dis = torch.max(torch.stack(dis, dim=0), dim=0)[0]
         return dis
+
+    def get_collision_spheres(self):
+        points = []
+        radius = []
+        for link_name in self.mesh:
+            if len(self.mesh[link_name]['collision_spheres']) > 0:
+                points.append(self.mesh[link_name]['collision_spheres'][..., :3] @ self.local_rotations[link_name].transpose(1, 2) + self.local_translations[link_name].unsqueeze(1))
+                radius.append(self.mesh[link_name]['collision_spheres'][..., 3])
+        points = torch.cat(points, dim=-2).to(self.device)
+        radius = torch.cat(radius, dim=-1).to(self.device)
+        points = points @ self.global_rotation.transpose(1, 2) + self.global_translation.unsqueeze(1)
+        return points, radius
+    
+    def cal_self_distance(self, dilation_spen=0):
+        # TODO: forward 8% backward 10%
+        # get surface points
+        x = []
+        for link_name in self.mesh:
+            x.append(self.mesh[link_name]['surface_points'] @ self.local_rotations[link_name].transpose(1, 2) + self.local_translations[link_name].unsqueeze(1))
+        x = torch.cat(x, dim=-2).to(self.device)  # (total_batch_size, n_surface_points, 3)
+        # x = x.detach()  # or else gradient will backprop through x to hand_pose
+        if len(x.shape) == 2:
+            x = x.expand(1, x.shape[0], x.shape[1])
+        # cal distance
+        dis = []
+        for link_name in self.mesh:
+            x_local = transform_points_inverse(x, self.local_translations[link_name], self.local_rotations[link_name])
+            # equivalent to:
+            # x_local = (x - self.local_translations[link_name].unsqueeze(1)) @ self.local_rotations[link_name]
+            x_local = x_local.reshape(-1, 3)  # (total_batch_size * n_surface_points, 3)
+            for box in self.mesh[link_name]['boxes']:
+                x_box = fixed_transform_points_inverse(x_local, box['translation'], box['rotation'])
+                # equivalent to:
+                # x_local = (x_local - self.mesh[link_name]['translation']) @ self.mesh[link_name]['rotation']
+                size = box['size'] + dilation_spen
+                dis_local, dis_signs, _ = box_sdf(x_box, size)
+                dis_local = (dis_local + 1e-8).sqrt()
+                dis_local = torch.where(dis_signs, -dis_local, dis_local)
+                dis_local = dis_local.reshape(x.shape[0], x.shape[1])  # (total_batch_size, n_surface_points)
+                is_adjacent = self.adjacency_mask[self.link_name_to_link_index[link_name], self.surface_points_link_indices]  # (n_surface_points,)
+                dis_local[:, is_adjacent | (self.link_name_to_link_index[link_name] == self.surface_points_link_indices)] = -float('inf')
+                dis.append(dis_local)
+        dis = torch.max(torch.stack(dis, dim=0), dim=0)[0]
+        return dis
+
+    def self_penetration(self, dilation_spen=0):
+        dis = self.cal_self_distance(dilation_spen=dilation_spen)
+        dis[dis <= 0] = 0
+        E_spen = dis.sum(-1)
+        return E_spen
     
     def cal_loss_tpen(self, p, dilation_tpen=0.):
         collision_vertices = self.get_collision_vertices()
@@ -253,6 +365,15 @@ class RobotModel:
         points = []
         for link_name in link_names:
             points.append(self.mesh[link_name]['collision_vertices'] @ self.local_rotations[link_name].transpose(1, 2) + self.local_translations[link_name].unsqueeze(1))
+        points = torch.cat(points, dim=-2).to(self.device)
+        points = points @ self.global_rotation.transpose(1, 2) + self.global_translation.unsqueeze(1)
+        return points
+    
+    def get_contact_candidates(self):
+        points = []
+        for link_name in self.mesh:
+            if len(self.mesh[link_name]['contact_candidates']) > 0:
+                points.append(self.mesh[link_name]['contact_candidates'] @ self.local_rotations[link_name].transpose(1, 2) + self.local_translations[link_name].unsqueeze(1))
         points = torch.cat(points, dim=-2).to(self.device)
         points = points @ self.global_rotation.transpose(1, 2) + self.global_translation.unsqueeze(1)
         return points

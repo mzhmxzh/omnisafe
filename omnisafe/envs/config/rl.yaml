@@ -1,6 +1,6 @@
 exp_name: temp
-model_path: null
-gpu: 3
+model_path: experiments/ppo/v8.0_table/checkpoints/iter_31k.pt
+gpu: 1
 seed: 1812
 num_frames: 1
 use_loss_tpen: False
@@ -15,7 +15,7 @@ robot_pc_points: 4096
 object_pc_points: 256
 with_tactile: 1
 quantization_size: 0.01
-split_path: data/splits/bc_dataset.json
+split_path: data/splits-v15/bc_dataset.json
 gamma: 0.96
 lam: 0.95
 ppo_epochs: 1
@@ -25,8 +25,11 @@ target_kl: null # 0.2
 strict_constraint: 0
 from_start: 0
 back_step_range: [0, 15]
+# reload_every: 20
 p: 727
 d: 15
+
+with_safety_wrapper: 0
 
 num_envs: 100
 num_obj_per_env: 1
@@ -40,8 +43,8 @@ actor:
       local_conv_hidden_layers_dim: [64, 256]
       global_mlp_hidden_layers_dim: [256]
       pc_feature_dim: 64
-    #scene_encoder_path: experiments/backbone/v7/checkpoints/iter_200k.pt
-    scene_encoder_path: /mnt/disk0/danshili/Workspace/RealCheapPolicy/experiments/1001_pretrain_mini/checkpoints/iter_100k.pt
+    scene_encoder_path: experiments/backbone/v7/checkpoints/iter_200k.pt
+    #scene_encoder_path: experiments/pretrain_obj_emd_2/checkpoints/iter_110k.pt
   freeze_vision_backbone: False
   policy_type: gaussian
   robot_mlp_parameters:
@@ -75,4 +78,12 @@ trans_reward_weight: 10.0
 rot_reward_weight: 1.0
 qpos_reward_weight: 0.5
 
-reward_type: staged2
+reward_type: staged2_lhr
+
+wrapper_object: True
+wrapper_finger: False
+friction_coef: 1.0
+wrapper_thr_x: 10.0
+wrapper_thr_z: 10.0
+
+force_z_noise: 10.0

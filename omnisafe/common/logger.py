@@ -100,7 +100,8 @@ class Logger:  # pylint: disable=too-many-instance-attributes
 
         self._hms_time: str = hms_time
         self._log_dir: str = os.path.join(output_dir, exp_name, relpath)
-        self._maste_proc: bool = get_rank() == 0
+        # self._maste_proc: bool = get_rank() == 0
+        self._maste_proc: bool = True
         self._console: Console = Console()
 
         if self._maste_proc:
@@ -270,9 +271,9 @@ class Logger:  # pylint: disable=too-many-instance-attributes
             if isinstance(val, (int, float)):
                 self._data[key].append(val)
             elif isinstance(val, torch.Tensor):
-                self._data[key].append(val.mean().item())
+                self._data[key].append(val)
             elif isinstance(val, np.ndarray):
-                self._data[key].append(val.mean())
+                self._data[key].append(val)
             else:
                 raise ValueError(f'Unsupported type {type(val)}')
 
@@ -355,17 +356,26 @@ class Logger:  # pylint: disable=too-many-instance-attributes
         vals = self._data[key]
         if isinstance(vals, deque):
             vals = list(vals)
+        try:
+            vals = torch.tensor(vals).to(os.getenv('OMNISAFE_DEVICE', 'cpu')).float()
+        except:
+            vals = torch.cat(vals).to(os.getenv('OMNISAFE_DEVICE', 'cpu')).float()
 
         if min_and_max:
-            mean, std, min_val, max_val = dist_statistics_scalar(
-                torch.tensor(vals).to(os.getenv('OMNISAFE_DEVICE', 'cpu')),
-                with_min_and_max=True,
-            )
+            # mean, std, min_val, max_val = dist_statistics_scalar(
+            #     torch.tensor(vals).to(os.getenv('OMNISAFE_DEVICE', 'cpu')),
+            #     with_min_and_max=True,
+            # )
+            mean = torch.tensor(vals).to(os.getenv('OMNISAFE_DEVICE', 'cpu')).mean()
+            std = torch.tensor(vals).to(os.getenv('OMNISAFE_DEVICE', 'cpu')).std()
+            min_val = torch.tensor(vals).to(os.getenv('OMNISAFE_DEVICE', 'cpu')).min()
+            max_val = torch.tensor(vals).to(os.getenv('OMNISAFE_DEVICE', 'cpu')).max()
             return mean.item(), min_val.mean().item(), max_val.mean().item(), std.item()
 
-        mean, std = dist_statistics_scalar(  # pylint: disable=unbalanced-tuple-unpacking
-            torch.tensor(vals).to(os.getenv('OMNISAFE_DEVICE', 'cpu')),
-        )
+        # mean, std = dist_statistics_scalar(  # pylint: disable=unbalanced-tuple-unpacking
+        #     torch.tensor(vals).to(os.getenv('OMNISAFE_DEVICE', 'cpu')),
+        # )
+        mean = torch.tensor(vals).to(os.getenv('OMNISAFE_DEVICE', 'cpu')).mean()
         return (mean.item(),)
 
     @property

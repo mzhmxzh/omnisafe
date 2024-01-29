@@ -18,6 +18,8 @@ defaults:
   seed: 0
   # training configurations
   train_cfgs:
+    # train
+    train: 1
     # device to use for training, options: cpu, cuda, cuda:0, cuda:0,1, etc.
     device: cuda:3
     # number of threads for torch
@@ -31,11 +33,11 @@ defaults:
   # algorithm configurations
   algo_cfgs:
     # number of steps to update the policy
-    steps_per_epoch: 50
+    steps_per_epoch: 8
     # number of iterations to update the policy
-    update_iters: 40
+    update_iters: 1
     # batch size for each iteration
-    batch_size: 64
+    batch_size: 256
     # target kl divergence
     target_kl: 0.02
     # entropy coefficient
@@ -51,15 +53,15 @@ defaults:
     # use max gradient norm
     use_max_grad_norm: True
     # max gradient norm
-    max_grad_norm: 40.0
+    max_grad_norm: 0.5
     # use critic norm
-    use_critic_norm: True
+    use_critic_norm: False
     # critic norm coefficient
     critic_norm_coef: 0.001
     # reward discount factor
-    gamma: 0.99
+    gamma: 0.96
     # cost discount factor
-    cost_gamma: 0.99
+    cost_gamma: 0.96
     # lambda for gae
     lam: 0.95
     # lambda for cost gae
@@ -110,7 +112,7 @@ defaults:
       activation: tanh
       # out_activation: tanh
       # learning rate
-      lr: 0.0003
+      lr: 0.00001
     critic:
       # hidden layer sizes
       hidden_sizes: [128, 64, 16]

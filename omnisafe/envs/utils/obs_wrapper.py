@@ -26,7 +26,7 @@ class ObsWrapper():
     
     def query(self, obs_dict):
         robot_state = torch.cat([obs_dict['dof_pos']], dim=-1)
-        if self.data_type == 'obj_pc':
+        if True:#self.data_type == 'obj_pc':
             robot_state = torch.cat([robot_state, obs_dict['obj_trans']], dim=-1)
             if self.config.actor.with_rot:
                 robot_state = torch.cat([robot_state, obs_dict['rel_goal_rot'].reshape(*robot_state.shape[:-1], 9)], dim=-1)

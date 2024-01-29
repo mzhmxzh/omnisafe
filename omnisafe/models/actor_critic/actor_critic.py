@@ -85,9 +85,11 @@ class ActorCritic(nn.Module):
             weight_initialization_mode=model_cfgs.weight_initialization_mode,
             num_critics=1,
             use_obs_encoder=False,
-        ).build_critic(critic_type='v')
+        ).build_critic(critic_type='mlp')
         self.add_module('actor', self.actor)
         self.add_module('reward_critic', self.reward_critic)
+        
+        self.actor_critic_optimizer = optim.Adam(self.parameters(), lr=model_cfgs.actor.lr)
 
         if model_cfgs.actor.lr is not None:
             self.actor_optimizer: optim.Optimizer

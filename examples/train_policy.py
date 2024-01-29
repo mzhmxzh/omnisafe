@@ -56,7 +56,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--device',
         type=str,
-        default='cuda:3',
+        default='cuda:1',
         metavar='DEVICES',
         help='device to use for training',
     )
@@ -70,9 +70,16 @@ if __name__ == '__main__':
     parser.add_argument(
         '--torch-threads',
         type=int,
-        default=16,
+        default=1,
         metavar='THREADS',
         help='number of threads to use for torch',
+    )
+    parser.add_argument(
+        '--train',
+        type=int,
+        default=1,
+        metavar='TRAIN',
+        help='whether to perform gradient updates',
     )
     args, unparsed_args = parser.parse_known_args()
     keys = [k[2:] for k in unparsed_args[0::2]]
