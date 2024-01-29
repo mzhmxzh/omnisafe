@@ -631,7 +631,7 @@ class Env():
             self.rollback_buf = (self.rollback_buf > 1)
             self.rollback_buf[self.progress_buf >= 0][rollback_mask] = True
             if self.config.use_all_sensor_cost:
-                self.cost = self.rollback_buf.float()
+                self.cost = self.unsafe_table.float() + self.rollback_buf.float()
             else:
                 self.cost = self.unsafe_table.float() + self.unsafe_object.float() + self.unsafe_fingers.float()
         
