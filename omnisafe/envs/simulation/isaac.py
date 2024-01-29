@@ -350,6 +350,10 @@ class Env():
         self.thr_z = self.config.get("thr_z", 10.0)
         self.thr_x = self.config.get("thr_x", 10.0)
         self.thr_obj_force = self.config.get("thr_obj_force", 10.0)
+        if self.config.force_scale > 0.0:
+            self.thr_x += self.config.force_scale
+            self.thr_z += self.config.force_scale
+            self.thr_obj_force += self.config.force_scale
 
         self.cost = torch.zeros((self.num_envs),device=self.device) * 5
         
