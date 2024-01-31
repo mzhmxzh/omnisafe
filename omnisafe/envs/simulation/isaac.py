@@ -630,7 +630,9 @@ class Env():
             rollback_idx = torch.arange(self.num_envs,device=self.device,dtype=torch.long)[self.progress_buf >= 0][rollback_mask]
 
             self.rollback_buf = (self.rollback_buf > 1)
-            self.rollback_buf[self.progress_buf >= 0][rollback_mask] = True
+            #self.rollback_buf[self.progress_buf >= 0][rollback_mask] = True #This is wrong: double mask indexing does not modify in-place
+            self.rollback_buf[rollback_idx] = True
+            
             if self.config.use_all_sensor_cost:
                 self.cost = self.unsafe_table.float() + self.rollback_buf.float()
             else:
