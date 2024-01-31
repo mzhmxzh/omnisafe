@@ -626,7 +626,8 @@ class Env():
 
             force_rollback_mask = force_sensor_read[self.progress_buf >= 0].max(dim=1)[0] > self.sensor_force_thr
             torque_rollback_mask = torque_sensor_read[self.progress_buf >= 0].max(dim=1)[0] > self.sensor_torque_thr
-            rollback_mask = torch.logical_or(force_rollback_mask,torque_rollback_mask).bool()
+            #rollback_mask = torch.logical_or(force_rollback_mask,torque_rollback_mask).bool()
+            rollback_mask = force_rollback_mask
             rollback_idx = torch.arange(self.num_envs,device=self.device,dtype=torch.long)[self.progress_buf >= 0][rollback_mask]
 
             self.rollback_buf = (self.rollback_buf > 1)
